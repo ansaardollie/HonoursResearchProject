@@ -17,6 +17,9 @@ using Roots
 using Base.Threads
 using Optim
 
+using Distributions
+
+
 
 include("hmd/hmd.jl")
 include("utilities/utilities.jl")

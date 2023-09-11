@@ -1,7 +1,36 @@
-export table_config
+export table_config, gen_seperator
 
 ft_identity = (v, i, j) -> v
 
+
+
+function gen_seperator(digits)
+    if digits == 0
+        fmt = "%.0f"
+    else
+        fmt = "%.$(digits)f"
+    end
+
+    seperator(v, i, j) = begin
+        if digits == 0
+            return "$(v)"
+        end
+        outcome = @eval @sprintf($fmt, $v)
+        parts = split(outcome, letter -> letter == '.')
+
+        lhs = reverse(parts[1])
+        rhs = parts[2]
+
+        lseperated = reverse(join(
+            [(i % 3 == 0) ? "$(lhs[i]) " : "$(lhs[i])" for i in eachindex(lhs)]
+        ))
+        rseperated = join([(i % 3 == 0) ? "$(rhs[i]) " : "$(rhs[i])" for i in eachindex(rhs)])
+
+        return strip("$lseperated.$rseperated")
+    end
+
+    return seperator
+end
 
 function table_config(io::IO;
     title=nothing, headers, rows=nothing, row_label_title=nothing,

@@ -76,21 +76,7 @@ function Base.axes(ps::ParameterSet)
     return (ps.range,)
 end
 
-function seperator(v, i, j)
 
-    outcome = @sprintf "%.6f" v
-    parts = split(outcome, letter -> letter == '.')
-
-    lhs = reverse(parts[1])
-    rhs = parts[2]
-
-    lseperated = reverse(join(
-        [(i % 3 == 0) ? "$(lhs[i]) " : "$(lhs[i])" for i in eachindex(lhs)]
-    ))
-    rseperated = join([(i % 3 == 0) ? "$(rhs[i]) " : "$(rhs[i])" for i in eachindex(rhs)])
-
-    return "$lseperated.$rseperated"
-end
 
 function Base.show(io::IO, t::MIME"text/plain", ps::ParameterSet{T}) where {T}
 
@@ -104,7 +90,7 @@ function Base.show(io::IO, t::MIME"text/plain", ps::ParameterSet{T}) where {T}
         headers=map(Symbol, [ps.name]),
         rows=indices,
         row_label_title=indextype,
-        formatters=seperator
+        formatters=gen_seperator(6)
     )
 
     pretty_table(io, ps.values; param_config...)

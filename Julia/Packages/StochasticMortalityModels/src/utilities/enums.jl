@@ -7,6 +7,7 @@ export MortalityDataSource, MDS_OBSERVED, MDS_FITTED, MDS_PREDICTED, MDS_CALCULA
 export MortalityDataCategory, MDC_EXPOSURES, MDC_DEATHS, MDC_APPROXIMATE_DEATHS, MDC_RATES, MDC_LOGRATES, MDC_LIFE_EXPECTANCIES, MDC_PARAMETERS, MDC_OTHER
 export sexmatch, mdc_convert, mdc_label, mdc_shortlabel
 export a0_config
+export UncertaintyMode, UM_INNOVATION_ONLY, UM_INNOVDRIFT
 
 @enum Sex begin
     SEX_BOTH = 1
@@ -47,6 +48,11 @@ end
     MDC_LIFE_EXPECTANCIES = 6
     MDC_PARAMETERS = 7
     MDC_OTHER = 8
+end
+
+@enum UncertaintyMode begin
+    UM_INNOVATION_ONLY = 1
+    UM_INNOVDRIFT = 2
 end
 
 

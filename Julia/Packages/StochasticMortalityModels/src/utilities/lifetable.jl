@@ -1,4 +1,4 @@
-export expected_lifetime
+export expected_lifetime, lexpectancies
 
 function expected_lifetime(
     mx, ages;
@@ -63,5 +63,31 @@ function expected_lifetime(
         println(df)
     end
     return ex[indexin(at_age, ages)]
+
+end
+
+
+function lexpectancies(
+    mxt::Matrix{Float64},
+    ages,
+    years;
+    sex,
+    at_age=[0],
+    mode::CalculationMode=CM_JULIA,
+    radix=1_000_000,
+    debug=false
+)
+
+    output = Matrix{Float64}(undef, length(at_age), length(years))
+
+    for i in eachindex(years)
+        year = years[i]
+        mx = mxt[:, i]
+
+        les = expected_lifetime(mx, ages; sex=sex, mode=mode, at_age=at_age, radix=radix, debug=debug)
+        output[:, i] = les
+    end
+
+    return output
 
 end

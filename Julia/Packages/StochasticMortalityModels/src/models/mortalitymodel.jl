@@ -20,15 +20,14 @@ function MortalityModel(;
     ranges::ModelRanges,
     data::DataFrame,
     calculation_mode::CalculationMode=CM_JULIA,
-    variant::Variant=VARIANT_LC,
-    kwargs...
+    variant::Variant=VARIANT_LC
 )
 
-    full_data = deepcopy(data)
+    all_data = deepcopy(data)
     fit_data = subset(data, ranges.fit.years, ranges.fit.ages)
-    forecast_data = subset(data, ranges.forecast.years, ranges.forecast.ages)
+    test_data = subset(data, ranges.test.years, ranges.test.ages)
 
-    strat_df = Stratified{DataFrame}(full_data, fit_data, forecast_data, "Raw Data Frames")
+    strat_df = Stratified{DataFrame}(all_data, fit_data, test_data, "Raw Data Frames")
 
     df_columns = [:Exposures, :Rates, :LogRates, :Deaths, :ApproximateDeaths, :LifeExpectancies]
 
@@ -46,10 +45,10 @@ function MortalityModel(;
         end
 
         stratified_data = Stratified{AgePeriodData{Float64}}(
-            datasets[:full],
+            datasets[:all],
             datasets[:fit],
-            datasets[:forecast],
-            datasets[:full].label
+            datasets[:test],
+            datasets[:all].label
         )
 
         ds[column] = stratified_data
@@ -82,11 +81,10 @@ function MortalityModel(
     remove_missing::Bool=true,
     fityears::Optional{AbstractVector{Int}}=nothing,
     fitages::Optional{AbstractVector{Int}}=nothing,
-    forecastyears::Optional{AbstractVector{Int}}=nothing,
-    forecastages::Optional{AbstractVector{Int}}=nothing,
+    testyears::Optional{AbstractVector{Int}}=nothing,
+    testages::Optional{AbstractVector{Int}}=nothing,
     calculation_mode::CalculationMode=CM_JULIA,
-    variant::Variant=VARIANT_LC,
-    kwargs...
+    variant::Variant=VARIANT_LC
 )
     cd = pwd()
     dir = "$cd/Raw Mortality Data/$country"
@@ -120,19 +118,19 @@ function MortalityModel(
     )
 
     fitfor = (years=fityears, ages=fitages)
-    forecastfor = (years=forecastyears, ages=forecastages)
+    testfor = (years=testyears, ages=testages)
 
-    full_years = unique(df.Year)
-    full_ages = unique(df.Age)
-    fit_years = isnothing(fitfor) || isnothing(fitfor.years) ? full_years : collect(fitfor.years)
-    fit_ages = isnothing(fitfor) || isnothing(fitfor.ages) ? full_ages : collect(fitfor.ages)
-    fc_years = isnothing(forecastfor) || isnothing(forecastfor.years) ? full_years : collect(forecastfor.years)
-    fc_ages = isnothing(forecastfor) || isnothing(forecastfor.ages) ? full_ages : collect(forecastfor.ages)
+    all_years = unique(df.Year)
+    all_ages = unique(df.Age)
+    fit_years = isnothing(fitfor) || isnothing(fitfor.years) ? all_years : collect(fitfor.years)
+    fit_ages = isnothing(fitfor) || isnothing(fitfor.ages) ? all_ages : collect(fitfor.ages)
+    test_years = isnothing(testfor) || isnothing(testfor.years) ? all_years : collect(testfor.years)
+    test_ages = isnothing(testfor) || isnothing(testfor.ages) ? all_ages : collect(testfor.ages)
 
     modeldims::ModelRanges = Stratified{AgeYearRange}(
-        ageyear(full_years, full_ages),
+        ageyear(all_years, all_ages),
         ageyear(fit_years, fit_ages),
-        ageyear(fc_years, fc_ages),
+        ageyear(test_years, test_ages),
         "Data Ranges"
     )
 
@@ -142,8 +140,7 @@ function MortalityModel(
         ranges=modeldims,
         data=df,
         calculation_mode=calculation_mode,
-        variant=variant,
-        kwargs...
+        variant=variant
     )
 
 end
@@ -166,14 +163,14 @@ function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
     println(io, "Data Ranges")
     println(io)
 
-    d1ages = strip("$(model.ranges.full.ages)")
-    d1years = strip("$(model.ranges.full.years)")
+    d1ages = strip("$(model.ranges.all.ages)")
+    d1years = strip("$(model.ranges.all.years)")
     d2ages = strip("$(model.ranges.fit.ages)")
     d2years = strip("$(model.ranges.fit.years)")
-    d3ages = strip("$(model.ranges.forecast.ages)")
-    d3years = strip("$(model.ranges.forecast.years)")
+    d3ages = strip("$(model.ranges.test.ages)")
+    d3years = strip("$(model.ranges.test.years)")
 
-    dm = ["Full" d1ages d1years; "Fit" d2ages d2years; "Forecast" d3ages d3years]
+    dm = ["All Data" d1ages d1years; "Fit Data" d2ages d2years; "Test Data" d3ages d3years]
 
     headers = [:Dataset, :Ages, :Years]
     model_config = table_config(io,

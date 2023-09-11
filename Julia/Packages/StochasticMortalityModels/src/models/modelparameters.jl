@@ -132,14 +132,14 @@ function Base.show(io::IO, t::MIME"text/plain", mp::ModelParameters)
     title_out = "Age Dependent Parameters"
     title_year = "Time Dependent Parameters"
 
-
+    rs = gen_seperator(6)
     age_conf = table_config(
         io,
         headers=map(Symbol, [mp.alphas.name, mp.betas.name]),
         rows=ages,
         row_label_title="Ages",
         title=title_out,
-        formatters=seperator
+        formatters=rs
     )
 
     pretty_table(io, hcat(mp.alphas.values, mp.betas.values); age_conf...)
@@ -149,7 +149,7 @@ function Base.show(io::IO, t::MIME"text/plain", mp::ModelParameters)
         headers=map(Symbol, [mp.kappas.name]),
         rows=years,
         row_label_title="Years",
-        formatters=seperator,
+        formatters=rs,
         title=title_year
     )
 

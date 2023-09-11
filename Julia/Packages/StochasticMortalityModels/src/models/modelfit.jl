@@ -5,7 +5,8 @@ export fitrange!,
     adjustkappa_lc_demography2!,
     fitted_deaths,
     adjustkappa_lm!,
-    adjustkappa_bms!
+    adjustkappa_bms!,
+    fit!
 
 
 function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing, ages::SecondaryRangeSelection)
@@ -15,31 +16,31 @@ function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing
     end
 
     yr = @match years begin
-        ::Nothing => model.ranges.full.years
+        ::Nothing => model.ranges.all.years
         ::DataRange => years
         ::AbstractArray{Int} => yearrange(years)
         _ => throw(ArgumentError("Cant pass $(typeof(years)), must be `nothing` a `DataRange object or `Vector{Int}`"))
     end
 
     ar = @match ages begin
-        ::Nothing => model.ranges.full.ages
+        ::Nothing => model.ranges.all.ages
         ::DataRange => ages
         ::AbstractArray{Int} => agerange(ages)
         _ => throw(ArgumentError("Cant pass $(typeof(years)), must be `nothing` a `DataRange object or `Vector{Int}`"))
     end
 
     exposures = model.exposures
-    @reset exposures.fit = model.exposures.full[ar, yr]
+    @reset exposures.fit = model.exposures.all[ar, yr]
     deaths = model.deaths
-    @reset deaths.fit = model.deaths.full[ar, yr]
+    @reset deaths.fit = model.deaths.all[ar, yr]
     approximatedeaths = model.approximatedeaths
-    @reset approximatedeaths.fit = model.approximatedeaths.full[ar, yr]
+    @reset approximatedeaths.fit = model.approximatedeaths.all[ar, yr]
     rates = model.rates
-    @reset rates.fit = model.rates.full[ar, yr]
+    @reset rates.fit = model.rates.all[ar, yr]
     logrates = model.logrates
-    @reset logrates.fit = model.logrates.full[ar, yr]
+    @reset logrates.fit = model.logrates.all[ar, yr]
     expectedlifetimes = model.expectedlifetimes
-    @reset expectedlifetimes.fit = model.expectedlifetimes.full[ar, yr]
+    @reset expectedlifetimes.fit = model.expectedlifetimes.all[ar, yr]
     ranges = model.ranges
     @reset ranges.fit = (years=yr, ages=ar)
 
@@ -176,7 +177,6 @@ function deviance(obs, fit)
 end
 
 function adjustkappa_bms!(model::MortalityModel)
-    ages = model.ranges.fit.ages.values
     parameters = deepcopy(model.parameters)
     years = model.ranges.fit.years.values
     deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.data : model.approximatedeaths.fit.data
@@ -223,3 +223,20 @@ function adjustkappa_bms!(model::MortalityModel)
     model.parameters = parameters
 end
 
+
+
+function fit!(model::MortalityModel; constrain::Bool=true)
+
+    basefit!(model, constrain=constrain)
+
+    if model.variant == VARIANT_BMS
+        adjustkappa_bms!(model)
+    elseif model.variant == VARIANT_LM
+        adjustkappa_lm!(model)
+    else
+        adjustkappa_lc!(model)
+    end
+
+    return model
+
+end
