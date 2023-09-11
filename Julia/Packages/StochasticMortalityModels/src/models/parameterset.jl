@@ -19,7 +19,7 @@ function ParameterSet{S}(name::String, range::DataRange) where {S<:Real}
 end
 function ParameterSet(name::String, range::DataRange)
     n = length(range)
-    vals = Vector{Float64}(undef, n)
+    vals = Vector{Float64}(fill(0, n))
     return ParameterSet(name, vals, range)
 end
 
