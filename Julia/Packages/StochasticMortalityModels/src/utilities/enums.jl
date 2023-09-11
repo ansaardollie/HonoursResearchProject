@@ -8,6 +8,8 @@ export MortalityDataCategory, MDC_EXPOSURES, MDC_DEATHS, MDC_APPROXIMATE_DEATHS,
 export sexmatch, mdc_convert, mdc_label, mdc_shortlabel
 export a0_config
 export UncertaintyMode, UM_INNOVATION_ONLY, UM_INNOVDRIFT
+export AdjustmentChoice, AC_NONE, AC_DT, AC_E0, AC_DXT
+export JumpOffRate, JR_FITTED, JF_ACTUAL
 
 @enum Sex begin
     SEX_BOTH = 1
@@ -20,6 +22,19 @@ end
     VARIANT_LC = 2
     VARIANT_LM = 3
 end
+
+@enum AdjustmentChoice begin
+    AC_NONE = 1
+    AC_DT = 2
+    AC_E0 = 3
+    AC_DXT = 4
+end
+
+@enum JumpOffRate begin
+    JR_FITTED = 1
+    JR_ACTUAL = 2
+end
+
 
 @enum CalculationMode begin
     CM_DEMOGRAPHY = 1

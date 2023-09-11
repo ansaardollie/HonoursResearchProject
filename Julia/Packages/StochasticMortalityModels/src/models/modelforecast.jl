@@ -32,7 +32,7 @@ function forecast(
     kappas = model.parameters.kappas.values
 
 
-    jumpoff_rates = model.variant == VARIANT_LM ?
+    jumpoff_rates = model.variant.jumpoff == JR_ACTUAL ?
                     model.rates.fit.data[:, end] :
                     vec(mxt_hat(model.parameters, years=[years[end]]).data)
     log_jr = log.(jumpoff_rates)

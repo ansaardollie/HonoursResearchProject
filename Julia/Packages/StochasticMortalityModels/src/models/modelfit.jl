@@ -229,9 +229,9 @@ function fit!(model::MortalityModel; constrain::Bool=true)
 
     basefit!(model, constrain=constrain)
 
-    if model.variant == VARIANT_BMS
+    if model.variant.adjustment == AC_DXT
         adjustkappa_bms!(model)
-    elseif model.variant == VARIANT_LM
+    elseif model.variant.adjustment == AC_E0
         adjustkappa_lm!(model)
     else
         adjustkappa_lc!(model)

@@ -10,7 +10,7 @@ mutable struct MortalityModel
     logrates::Stratified{AgePeriodData{Float64}}
     expectedlifetimes::Stratified{AgePeriodData{Float64}}
     data::Stratified{DataFrame}
-    variant::Variant
+    variant::ModelImplementation
     calculationmode::CalculationMode
     parameters::ModelParameters
 end
@@ -20,7 +20,7 @@ function MortalityModel(;
     ranges::ModelRanges,
     data::DataFrame,
     calculation_mode::CalculationMode=CM_JULIA,
-    variant::Variant=VARIANT_LC
+    variant::ModelImplementation=lc
 )
 
     all_data = deepcopy(data)
@@ -84,7 +84,7 @@ function MortalityModel(
     testyears::Optional{AbstractVector{Int}}=nothing,
     testages::Optional{AbstractVector{Int}}=nothing,
     calculation_mode::CalculationMode=CM_JULIA,
-    variant::Variant=VARIANT_LC
+    variant::ModelImplementation=lc
 )
     cd = pwd()
     dir = "$cd/Raw Mortality Data/$country"
