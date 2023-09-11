@@ -1,4 +1,4 @@
-export ForecastedData, ModelForecasts, forecast_kappa
+export ForecastedData, ModelForecasts, forecast
 struct ForecastedData{T}
     forecast::T
     lower::Optional{T}
@@ -22,7 +22,7 @@ struct ModelForecasts
 end
 
 
-function forecast_kappa(
+function forecast(
     model::MortalityModel;
     confidence_level::Float64=0.95,
     uncertainty::UncertaintyMode=UM_INNOVATION_ONLY
