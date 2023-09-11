@@ -77,7 +77,7 @@ function ageyear(years::AbstractVector{Int}, ages::AbstractVector{Int})
     ydr = DataRange(years, DD_YEAR)
     adr = DataRange(ages, DD_AGE)
 
-    return (years=ydr, ages=adr)
+    return (years=ydr, ages=adr)::AgeYearRange
 end
 
 function agerange(ages::AbstractVector{Int})
@@ -89,8 +89,6 @@ function yearrange(years::AbstractVector{Int})
 end
 
 function Base.print(io::IO, dr::DataRange, xs...)
-
-
     print(io, "$(dr.string_repr)")
 end
 
@@ -98,6 +96,16 @@ function Base.show(io::IO, ::MIME"text/plain", dr::DataRange)
     Base.print(io, dr)
 end
 
+function Base.repr(dr::DataRange)
+    io = IOBuffer()
+    rep = join(split(strip(dr.string_repr), "\n"), " ; ")
+    print(io, rep)
+    return String(take!(io))
+end
+
+
+
+# function Base.dis
 
 function Base.iterate(dr::DataRange)
     length(dr.values) < 1 && return nothing

@@ -1,15 +1,17 @@
 export fitrange!,
     basefit!,
+    LinearAlgebra,
     adjustkappa_lc!,
     adjustkappa_lc_demography!,
     adjustkappa_lc_demography2!,
     fitted_deaths,
     adjustkappa_lm!,
     adjustkappa_bms!,
-    fit!
+    fit!,
+    choose_period!
 
 
-function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing, ages::SecondaryRangeSelection)
+function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing, ages::SecondaryRangeSelection=nothing)
 
     if isnothing(years) && isnothing(ages)
         throw(ArgumentError("Must provide range to fit for"))
@@ -41,8 +43,12 @@ function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing
     @reset logrates.fit = model.logrates.all[ar, yr]
     expectedlifetimes = model.expectedlifetimes
     @reset expectedlifetimes.fit = model.expectedlifetimes.all[ar, yr]
-    ranges = model.ranges
-    @reset ranges.fit = (years=yr, ages=ar)
+    ranges::Stratified{AgeYearRange} = Stratified(
+        model.ranges.all,
+        (years=yr, ages=ar)::AgeYearRange,
+        model.ranges.test
+    )
+
 
     model.exposures = exposures
     model.deaths = deaths
@@ -85,14 +91,38 @@ function basefit!(model::MortalityModel; constrain::Bool=true)
     model.parameters = mp
 end
 
+function basefit!(logrates::Matrix{Float64}; constrain_julia::Bool=true, constrain_demography::Bool=false)
+    α = vec(mapslices(mean, logrates, dims=2))
+
+    Zxt = logrates .- α
+
+    Zxt_svd = svd(Zxt)
+    β = vec(Zxt_svd.U[:, 1])
+
+
+    κ = vec(Zxt_svd.V[:, 1] * Zxt_svd.S[1])
+    if constrain_julia
+        c1 = sum(β)
+        c2 = mean(κ)
+        α = α .+ (c2 .* β)
+        β = β ./ c1
+        κ = c1 .* (κ .- c2)
+    elseif constrain_demography
+        c1 = sum(β)
+        β = β ./ c1
+        κ = c1 .* κ
+    end
+
+    return (alpha=α, beta=β, kappa=κ)
+end
+
 function adjustkappa_lc!(model::MortalityModel)
     parameters = deepcopy(model.parameters)
 
     deaths = model.calculationmode == CM_JULIA ?
              model.deaths.fit.data :
              model.approximatedeaths.fit.data
-    println("Deaths used in solver")
-    println(deaths)
+
     betas = parameters.betas.values
     solve_func(fv, jv, kappas) = begin
         @reset parameters.kappas.values = kappas
@@ -169,6 +199,7 @@ function adjustkappa_lm!(model::MortalityModel)
 end
 
 function deviance(obs, fit)
+
     if obs == 0 || fit == 0
         return 0
     else
@@ -176,7 +207,8 @@ function deviance(obs, fit)
     end
 end
 
-function adjustkappa_bms!(model::MortalityModel)
+
+function adjustkappa_bms!(model::MortalityModel; constrain::Bool=true)
     parameters = deepcopy(model.parameters)
     years = model.ranges.fit.years.values
     deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.data : model.approximatedeaths.fit.data
@@ -216,11 +248,58 @@ function adjustkappa_bms!(model::MortalityModel)
 
     @reset parameters.kappas.values = opt_kappas
 
-    if model.calculationmode == CM_JULIA
-        parameters = constrain_julia!(parameters)
+    if constrain
+        parameters = constrain!(parameters; mode=model.calculationmode)
     end
 
     model.parameters = parameters
+end
+
+
+function adjustkappa_bms!(deaths::Matrix{Float64}, exposures::Matrix{Float64}, alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}; constrain_julia::Bool=true)
+
+    init_kappas = kappas
+
+    opt_kappas = Vector{Float64}()
+    for i in eachindex(init_kappas)
+
+        dt_byx = vec(deaths[:, i])
+        et_byx = vec(exposures[:, i])
+        k0 = init_kappas[i]
+
+        obj_func(kv) = begin
+            kappa = kv[1]
+            mx = exp.(alphas + betas * kappa)
+            fdx = et_byx .* mx
+            dev = deviance.(dt_byx, fdx)
+            return sum(dev)
+        end
+
+        grad_func(G, kv) = begin
+            kappa = kv[1]
+            mx = exp.(alphas + betas * kappa)
+            fdx = et_byx .* mx
+            gterms = 2 * (betas .* (fdx - dt_byx))
+            G[1] = sum(gterms)
+        end
+
+        opt_result = optimize(obj_func, grad_func, [k0])
+        push!(opt_kappas, opt_result.minimizer[1])
+    end
+
+    α = alphas
+    β = betas
+    κ = opt_kappas
+
+    if constrain_julia
+        c1 = sum(β)
+        c2 = mean(κ)
+        α = α .+ (c2 .* β)
+        β = β ./ c1
+        κ = c1 .* (κ .- c2)
+    end
+
+    return (alpha=α, beta=β, kappa=κ)
 end
 
 
@@ -335,7 +414,11 @@ function mt_adjustkappa_bms!(model::MortalityModel)
 end
 
 
-function fit!(model::MortalityModel; constrain::Bool=true, multithreaded::Bool=false)
+function fit!(model::MortalityModel; constrain::Bool=true, multithreaded::Bool=false, choose_period::Bool=false)
+
+    if choose_period
+        choose_period!(model)
+    end
 
     basefit!(model, constrain=constrain)
 
@@ -350,3 +433,94 @@ function fit!(model::MortalityModel; constrain::Bool=true, multithreaded::Bool=f
     return model
 
 end
+
+
+function calculate_deviance_statistic(deaths::Matrix{Float64}, exposures::Matrix{Float64}, alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64})
+    X = size(deaths, 1)
+    T = size(deaths, 2)
+    mxt = exp.(reshape(alphas, X, 1) .+ reshape(betas, X, 1) * reshape(kappas, 1, T))
+    fdxt = exposures .* mxt
+    dev_xt = deviance.(deaths, fdxt)
+
+    mk = mean(kappas)
+    slope = (kappas[end] - kappas[begin]) / (T - 1)
+    mt = 1 + (T / 2)
+
+    t = collect(1:T)
+    lf_kappas = mk .+ slope .* (t .- mt)
+
+    lf_mxt = exp.(reshape(alphas, X, 1) .+ reshape(betas, X, 1) * reshape(lf_kappas, 1, T))
+    lf_fdxt = exposures .* lf_mxt
+    dev_lfxt = deviance.(deaths, lf_fdxt)
+
+    dev_base = sum(dev_xt)
+    dev_total = sum(dev_lfxt)
+
+    df_base = ((X - 1) * (T - 2))
+    df_total = (X * (T - 2))
+
+    R_s = (dev_total / df_total) / (dev_base / df_base)
+
+    return R_s
+
+end
+
+
+function choose_period!(model::MortalityModel)
+    all_years = model.ranges.all.years.values
+    fit_years = model.ranges.fit.years.values
+    test_years = model.ranges.test.years.values
+
+    if length(all_years) != length(test_years) || !all(all_years .== test_years)
+        years = collect(all_years[begin]:(test_years[begin]-1))
+    else
+        years = model.ranges.fit.years.values
+    end
+
+
+    m = years[end]
+    potential_starts = years[1:end-2]
+    Sl = length(potential_starts)
+
+    cj = model.calculationmode == CM_JULIA
+    cd = model.calculationmode == CM_DEMOGRAPHY
+
+    R_statistics = Matrix{Float64}(undef, Sl, 2)
+
+    for i in eachindex(potential_starts)
+        S = potential_starts[i]
+        lmxt = model.logrates.fit[:, S:m].data
+        dxt = model.deaths.fit[:, S:m].data
+        Ext = model.exposures.fit[:, S:m].data
+        (alpha, beta, kappa) = basefit!(lmxt; constrain_julia=cj, constrain_demography=cd)
+
+        (alpha, beta, kappa) = adjustkappa_bms!(dxt, Ext, alpha, beta, kappa; constrain_julia=false)
+
+        R_S = calculate_deviance_statistic(dxt, Ext, alpha, beta, kappa)
+
+        R_statistics[i, :] = [S, R_S]
+    end
+
+    ordered_idx = sortperm(R_statistics[:, 2])
+    start_year = Int(R_statistics[ordered_idx[1], 1])
+    yr = yearrange(start_year:m)
+
+    fitrange!(model; years=yr)
+
+end
+
+
+function variation_explained(model::MortalityModel)
+    logrates = model.logrates.all.data
+    α = mapslices(mean, logrates, dims=2)
+    centered = logrates .- α
+
+    σ = svd(centered).S
+
+    ∑σ² = sum(σ .^ 2)
+
+    pve = cumsum(σ .^ 2) ./ ∑σ²
+
+    return pve
+end
+

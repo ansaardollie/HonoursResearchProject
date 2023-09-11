@@ -7,7 +7,9 @@ function readfile(
     data, headers = DelimitedFiles.readdlm(path; header=true, skipstart=2)
     data_dict::Dict{String,Any} = Dict()
 
+    data[:, 2] = ([typeof(age) <: Number ? age : occursin("-", age) ? parse(Float64, split(age, "-")[1]) : age for age in data[:, 2]])
     data[:, 2] = ([age == "110+" ? 110 : age for age in data[:, 2]])
+
     data[:, 1] = (data[:, 1])
 
     nrow = size(data, 1)

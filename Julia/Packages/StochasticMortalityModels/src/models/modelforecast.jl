@@ -85,7 +85,6 @@ function forecast(
     ub = mxt_fub.data[begin, begin]
     lb = mxt_flb.data[begin, begin]
 
-    println("LB =", lb, " ; FC =", fc, " ; UB =", ub)
 
     @reset mxt_fc.source = MDS_PREDICTED
     @reset mxt_flb.source = MDS_PREDICTED

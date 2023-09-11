@@ -17,7 +17,7 @@ end
 
 function MortalityModel(;
     population::PopulationInfo,
-    ranges::ModelRanges,
+    ranges::Stratified{AgeYearRange},
     data::DataFrame,
     calculation_mode::CalculationMode=CM_JULIA,
     variant::ModelImplementation=lc
@@ -120,20 +120,38 @@ function MortalityModel(
     fitfor = (years=fityears, ages=fitages)
     testfor = (years=testyears, ages=testages)
 
-    all_years = unique(df.Year)
-    all_ages = unique(df.Age)
+    potential_years = sort(unique(df.Year))
+    sy = potential_years[begin]
+    ey = potential_years[end]
+    all_years = Vector{Int}()
+
+    for y in reverse(sy:ey)
+        if y in potential_years
+            push!(all_years, y)
+        else
+            break
+        end
+    end
+    all_ages = sort(unique(df.Age))
+    all_years = reverse(all_years)
+
     fit_years = isnothing(fitfor) || isnothing(fitfor.years) ? all_years : collect(fitfor.years)
     fit_ages = isnothing(fitfor) || isnothing(fitfor.ages) ? all_ages : collect(fitfor.ages)
     test_years = isnothing(testfor) || isnothing(testfor.years) ? all_years : collect(testfor.years)
     test_ages = isnothing(testfor) || isnothing(testfor.ages) ? all_ages : collect(testfor.ages)
 
-    modeldims::ModelRanges = Stratified{AgeYearRange}(
-        ageyear(all_years, all_ages),
-        ageyear(fit_years, fit_ages),
-        ageyear(test_years, test_ages),
+    all_ayr = ageyear(all_years, all_ages)
+    fit_ayr = ageyear(fit_years, fit_ages)
+    test_ayr = ageyear(test_years, test_ages)
+
+    modeldims = Stratified{AgeYearRange}(
+        all_ayr,
+        fit_ayr,
+        test_ayr,
         "Data Ranges"
     )
 
+    df = DataFrames.subset(df, :Year => ByRow(y -> y in all_years))
 
     return MortalityModel(;
         population=popinfo,

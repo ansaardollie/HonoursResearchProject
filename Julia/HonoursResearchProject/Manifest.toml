@@ -2,7 +2,7 @@
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "21d6bcf774d56ded3ec27140653193c09fc2657c"
+project_hash = "8cccf9eccd944be01c78365d8dcd21e7a06a0132"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "LinearAlgebra", "MacroTools", "Requires", "Test"]
@@ -114,10 +114,10 @@ uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 version = "1.16.0"
 
 [[deps.Cleaner]]
-deps = ["PrettyTables", "Tables"]
-git-tree-sha1 = "b4de511a989faa6f67895fa1417b3e0118086aff"
+deps = ["Tables"]
+git-tree-sha1 = "f0ebda9a8284c10ec10df406f669edca4c69892f"
 uuid = "caabdcdb-0ab6-47cf-9f62-08858e44f38f"
-version = "1.0.3"
+version = "0.5.0"
 
 [[deps.CodeTracking]]
 deps = ["InteractiveUtils", "UUIDs"]
@@ -734,9 +734,9 @@ version = "1.7.0"
 
 [[deps.StatsBase]]
 deps = ["DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "75ebe04c5bed70b91614d684259b661c9e6274a4"
+git-tree-sha1 = "d1bf48bfcc554a3761a133fe3a9bb01488e06916"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-version = "0.34.0"
+version = "0.33.21"
 
 [[deps.StatsFuns]]
 deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
@@ -763,9 +763,9 @@ version = "1.0.0-DEV"
 
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]
-git-tree-sha1 = "5e13822b5907ccc18aa97cd89ed817756bbd2040"
+git-tree-sha1 = "a04cabe79c5f01f4d723cc6704070ada0b9d46d5"
 uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
-version = "0.3.3"
+version = "0.3.4"
 
 [[deps.SuiteSparse]]
 deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
@@ -803,10 +803,10 @@ deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[deps.TidierData]]
-deps = ["Chain", "Cleaner", "DataFrames", "MacroTools", "Reexport", "ShiftedArrays", "Statistics", "StatsBase"]
-git-tree-sha1 = "208ee18374d1aff392d7c50f2753568922bdf68c"
+deps = ["Chain", "Cleaner", "DataFrames", "MacroTools", "Reexport", "ShiftedArrays", "Statistics"]
+git-tree-sha1 = "a4a83e2f5083ee6b18e0f01c99b4483b4f7978a2"
 uuid = "fe2206b3-d496-4ee9-a338-6a095c4ece80"
-version = "0.12.0"
+version = "0.10.0"
 
 [[deps.TranscodingStreams]]
 deps = ["Random", "Test"]
