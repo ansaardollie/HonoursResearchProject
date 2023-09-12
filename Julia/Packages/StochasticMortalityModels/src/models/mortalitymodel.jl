@@ -135,10 +135,12 @@ function MortalityModel(
     all_ages = sort(unique(df.Age))
     all_years = reverse(all_years)
 
-    fit_years = isnothing(fitfor) || isnothing(fitfor.years) ? all_years : collect(fitfor.years)
-    fit_ages = isnothing(fitfor) || isnothing(fitfor.ages) ? all_ages : collect(fitfor.ages)
-    test_years = isnothing(testfor) || isnothing(testfor.years) ? all_years : collect(testfor.years)
-    test_ages = isnothing(testfor) || isnothing(testfor.ages) ? all_ages : collect(testfor.ages)
+    fit_years = isnothing(fitfor.years) ? all_years : collect(fitfor.years)
+    fit_ages = isnothing(fitfor.ages) ? all_ages : collect(fitfor.ages)
+    test_years = isnothing(testfor.years) ? all_years : collect(testfor.years)
+    test_ages = !isnothing(testfor.ages) ? collect(testfor.ages) : !isnothing(fitfor.ages) ? fit_ages : all_ages
+
+
 
     all_ayr = ageyear(all_years, all_ages)
     fit_ayr = ageyear(fit_years, fit_ages)

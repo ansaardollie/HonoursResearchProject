@@ -9,7 +9,7 @@ export sexmatch, mdc_convert, mdc_label, mdc_shortlabel
 export a0_config
 export UncertaintyMode, UM_INNOVATION_ONLY, UM_INNOVDRIFT
 export AdjustmentChoice, AC_NONE, AC_DT, AC_E0, AC_DXT
-export JumpOffRate, JR_FITTED, JF_ACTUAL
+export JumpOffRate, JR_FITTED, JR_ACTUAL
 
 @enum Sex begin
     SEX_BOTH = 1

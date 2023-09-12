@@ -67,6 +67,9 @@ function forecast(
 
     alphas = ParameterSet("Jump Off α(x)", log_jr, model.parameters.alphas.range)
     betas = model.parameters.betas
+
+
+
     kappa_fc = ParameterSet("κ(t) [Forecast]", kt_forecast, horizon_yearrange)
     kappa_flb = ParameterSet("κ(t) [$(round(confidence_level*100,digits=0))% LB]", kt_flb, horizon_yearrange)
     kappa_fub = ParameterSet("κ(t) [$(round(confidence_level*100,digits=0))% UB]", kt_fub, horizon_yearrange)
@@ -77,13 +80,27 @@ function forecast(
 
     fub_params = ModelParameters(deepcopy(alphas), deepcopy(betas), deepcopy(kappa_fub))
 
+
     mxt_fc = mxt_hat(forecasted_params)
     mxt_flb = mxt_hat(flb_params)
     mxt_fub = mxt_hat(fub_params)
 
-    fc = mxt_fc.data[begin, begin]
-    ub = mxt_fub.data[begin, begin]
-    lb = mxt_flb.data[begin, begin]
+    for i in eachindex(mxt_flb.data)
+        lb = mxt_flb.data[i]
+        ub = mxt_fub.data[i]
+
+        if ub < lb
+            mxt_flb.data[i] = ub
+            mxt_fub.data[i] = lb
+        end
+    end
+
+    println("Rate Bounds correct: ", mxt_flb.data .< mxt_fub.data)
+
+    # mxt_fc = mxt_hat(forecasted_params)
+    # mxt_flb = mxt_hat(ModelParameters(deepcopy(alphas), deepcopy(betas), ParameterSet("κ(t) LBC", kappa_lbc, horizon_yearrange)))
+    # mxt_fub = mxt_hat(ModelParameters(deepcopy(alphas), deepcopy(betas), ParameterSet("κ(t) LBC", kappa_ubc, horizon_yearrange)))
+
 
 
     @reset mxt_fc.source = MDS_PREDICTED
@@ -95,8 +112,10 @@ function forecast(
     @reset mxt_fub.label = "Forecasted $(round(confidence_level*100,digits=0))% LB $rl"
 
     le_fc_dm = lexpectancies(mxt_fc.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
-    le_flb_dm = lexpectancies(mxt_flb.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
-    le_fub_dm = lexpectancies(mxt_fub.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+    le_flb_dm = lexpectancies(mxt_fub.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+    le_fub_dm = lexpectancies(mxt_flb.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+
+    println("LE Bounds correct: ", le_flb_dm .< le_fub_dm)
 
     rl = mdc_shortlabel(MDC_LIFE_EXPECTANCIES, MDS_OBSERVED)
     le_fc = AgePeriodData(MDC_LIFE_EXPECTANCIES, MDS_PREDICTED, "Forecasted $rl", le_fc_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
@@ -196,6 +215,11 @@ function Base.show(io::IO, t::MIME"text/plain", fd::ForecastedData{AgePeriodData
             lbv = lb_data[i]
             aub = lbv < ubv ? ubv : lbv
             alb = lbv < ubv ? lbv : ubv
+            if aub != ubv
+                println("[", fd.label, "] This should never print. UB issue ", aub, " ≠ ", ubv)
+            elseif alb != lbv
+                println("[", fd.label, "] This should never print. LB issue ", alb, " ≠ ", lbv)
+            end
             ub = sep(aub, 0, 0)
             lb = sep(alb, 0, 0)
             cell = IOBuffer()
