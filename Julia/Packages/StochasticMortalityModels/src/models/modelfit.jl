@@ -117,6 +117,89 @@ function basefit!(logrates::Matrix{Float64}; constrain_julia::Bool=true, constra
     return (alpha=α, beta=β, kappa=κ)
 end
 
+
+AdjustmentInfoLC = NamedTuple{(:init, :deaths, :exposures),Tuple{Float64,Vector{Float64},Vector{Float64}}}
+
+function gen_kopt_lc(alphas::Vector{Float64}, betas::Vector{Float64})
+
+    n = length(alphas)
+    gen_func(info::AdjustmentInfoLC) = begin
+        mx_f = Vector{Float64}(fill(0, n))
+        mx_j = Vector{Float64}(fill(0, n))
+        fdx_f = Vector{Float64}(fill(0, n))
+        fdx_j = Vector{Float64}(fill(0, n))
+
+        # fj!(F, G, kv) = begin
+        #     kappa = kv[1]
+        #     copyto!(mx_f, exp.(alphas + betas * kappa))
+        #     copyto!(fdx_f, info.exposures .* mx_f)
+
+        #     if !isnothing(F)
+
+        #     end
+        # end
+
+        solve_func!(F, kv) = begin
+            kappa = kv[1]
+            copyto!(mx_f, exp.(alphas + betas * kappa))
+            copyto!(fdx_f, info.exposures .* mx_f)
+
+            F[1] = sum(fdx_f .- info.deaths)
+        end
+
+        jacob_func!(G, kv) = begin
+            kappa = kv[1]
+            copyto!(mx_j, exp.(alphas + betas * kappa))
+            copyto!(fdx_j, info.exposures .* mx_j)
+            G[1] = sum(fdx_j .* betas)
+        end
+
+        solve_result = nlsolve(solve_func!, jacob_func!, [info.init])
+
+        return solve_result.zero[1]
+    end
+
+    return gen_func
+end
+
+
+function lc_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}, years::Vector{Int}, deaths::Matrix{Float64}, exposures::Matrix{Float64}; constrain_julia::Bool=true, constrain_demography::Bool=false)
+    data = Dict{Int,AdjustmentInfoLC}()
+
+    for i in eachindex(years)
+        data[years[i]] = (
+            init=kappas[i],
+            deaths=deaths[:, i],
+            exposures=exposures[:, i]
+        )
+    end
+
+    opt_f = gen_kopt_lc(alphas, betas)
+
+    output = ThreadsX.map(data) do pair
+        return pair[1] => opt_f(pair[2])
+    end
+
+    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
+
+    if constrain_julia
+        c1 = sum(betas)
+        c2 = mean(opt_kappas)
+
+        α = alphas .+ c2 * betas
+        β = betas ./ c1
+        κ = c1 * (opt_kappas .- c2)
+    elseif constrain_demography
+        c = sum(betas)
+        α = alphas
+        β = betas ./ c
+        κ = c .* opt_kappas
+    end
+
+    return (alphas=α, betas=β, kappas=κ)
+end
+
+
 function adjustkappa_lc!(model::MortalityModel)
     parameters = deepcopy(model.parameters)
 
@@ -152,8 +235,74 @@ function adjustkappa_lc!(model::MortalityModel)
     else
         model.parameters = parameters
     end
+end
 
 
+AdjustmentInfoLM = NamedTuple{(:init, :e0),Tuple{Float64,Float64}}
+
+function gen_kopt_lm(alphas::Vector{Float64}, betas::Vector{Float64}, ages::Vector{Int}, sex::Sex, start_age::Int, mode::CalculationMode=CM_JULIA)
+
+    n = length(alphas)
+    gen_func(info::AdjustmentInfoLM) = begin
+
+        solve_func!(F, kv) = begin
+            kappa = kv[1]
+            mx = exp.(alphas + betas * kappa)
+            fe0 = expected_lifetime(mx, ages; sex=sex, at_age=[start_age], mode=mode)
+            F[1] = fe0[1] - info.e0
+        end
+
+
+        solve_result = nlsolve(solve_func!, [info.init], autodiff=:forward, method=:newton)
+
+        return solve_result.zero[1]
+    end
+
+    return gen_func
+end
+
+
+function lm_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}, years::Vector{Int}, ages::Vector{Int}, rates::Matrix{Float64}, mrls::Matrix{Float64}, sex::Sex; cmode::CalculationMode=CM_JULIA, constrain::Bool=true)
+    data = Dict{Int,AdjustmentInfoLM}()
+
+    start_age = ages[1]
+    if cmode == CM_JULIA
+        obs_e0 = mrls[1, :]
+    else
+        el = mapslices(mx -> expected_lifetime(mx, ages; sex=sex, at_age=[start_age], mode=cmode), rates, dims=1)
+        obs_e0 = vec(el)
+    end
+
+    for i in eachindex(years)
+        data[years[i]] = (
+            init=kappas[i],
+            e0=obs_e0[i])
+    end
+
+    solve_f = gen_kopt_lm(alphas, betas, ages, sex, start_age, cmode)
+
+    output = ThreadsX.map(data) do pair
+        return pair[1] => solve_f(pair[2])
+    end
+
+    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
+
+    if constrain &&
+       cmode == CM_JULIA
+        c1 = sum(betas)
+        c2 = mean(opt_kappas)
+
+        α = alphas .+ c2 * betas
+        β = betas ./ c1
+        κ = c1 * (opt_kappas .- c2)
+    elseif constrain && cmode == CM_DEMOGRAPHY
+        c = sum(betas)
+        α = alphas
+        β = betas ./ c
+        κ = c .* opt_kappas
+    end
+
+    return (alphas=α, betas=β, kappas=κ)
 end
 
 function adjustkappa_lm!(model::MortalityModel)
