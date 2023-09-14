@@ -5,6 +5,7 @@ struct ForecastedData{T}
     upper::Optional{T}
     label::AbstractString
     cl::Optional{Float64}
+    uncertainty::Optional{UncertaintyMode}
 end
 
 
@@ -12,12 +13,13 @@ struct ModelForecasts
     kappas::ForecastedData{ParameterSet{Float64}}
     rates::ForecastedData{AgePeriodData{Float64}}
     expectedlifetimes::ForecastedData{AgePeriodData{Float64}}
-    function ModelForecasts(kappas::Vector{ParameterSet{Float64}}, rates::Vector{AgePeriodData{Float64}}, expectedlt::Vector{AgePeriodData{Float64}}, cl::Optional{Float64}=nothing)
-        k = ForecastedData(kappas[1], kappas[2], kappas[3], "κ(t)", cl)
-        mxt = ForecastedData(rates[1], rates[2], rates[3], "m(x,t)", cl)
-        elt = ForecastedData(expectedlt[1], expectedlt[2], expectedlt[3], "e(x,t)", cl)
+    uncertainty::Optional{UncertaintyMode}
+    function ModelForecasts(kappas::Vector{ParameterSet{Float64}}, rates::Vector{AgePeriodData{Float64}}, expectedlt::Vector{AgePeriodData{Float64}}, cl::Optional{Float64}=nothing; uncertainty::Optional{UncertaintyMode}=nothing)
+        k = ForecastedData(kappas[1], kappas[2], kappas[3], "κ(t)", cl, uncertainty)
+        mxt = ForecastedData(rates[1], rates[2], rates[3], "m(x,t)", cl, uncertainty)
+        elt = ForecastedData(expectedlt[1], expectedlt[2], expectedlt[3], "e(x,t)", cl, uncertainty)
 
-        return new(k, mxt, elt)
+        return new(k, mxt, elt, uncertainty)
     end
 end
 
@@ -31,10 +33,20 @@ function forecast(
 
     kappas = model.parameters.kappas.values
 
+    use_actual = model.variant.jumpoff == JR_ACTUAL
 
-    jumpoff_rates = model.variant.jumpoff == JR_ACTUAL ?
+    println("Use Actual Rates for jumpoff ", use_actual)
+
+    println("Actual Rates")
+    println(model.rates.fit.data[:, end])
+    println("Fitted Rates")
+    println(vec(mxt_hat(model.parameters, years=[years[end]]).data))
+
+    jumpoff_rates = use_actual ?
                     model.rates.fit.data[:, end] :
                     vec(mxt_hat(model.parameters, years=[years[end]]).data)
+
+
     log_jr = log.(jumpoff_rates)
 
     kt = kappas .- kappas[end]
@@ -56,7 +68,7 @@ function forecast(
     h = length(horizon)
     x = collect(1:h)
 
-    kt_se = uncertainty == UM_INNOVATION_ONLY ? sqrt.(x .* se_σ^2) : sqrt(x .* se_σ^2 + (x .* se_μ) .^ 2)
+    kt_se = uncertainty == UM_INNOVATION_ONLY ? sqrt.(x .* se_σ^2) : sqrt.(x .* se_σ^2 + (x .* se_μ) .^ 2)
 
     α = 1 - confidence_level
     z = quantile(Normal(), 1 - (α / 2))
@@ -95,12 +107,6 @@ function forecast(
         end
     end
 
-    println("Rate Bounds correct: ", mxt_flb.data .< mxt_fub.data)
-
-    # mxt_fc = mxt_hat(forecasted_params)
-    # mxt_flb = mxt_hat(ModelParameters(deepcopy(alphas), deepcopy(betas), ParameterSet("κ(t) LBC", kappa_lbc, horizon_yearrange)))
-    # mxt_fub = mxt_hat(ModelParameters(deepcopy(alphas), deepcopy(betas), ParameterSet("κ(t) LBC", kappa_ubc, horizon_yearrange)))
-
 
 
     @reset mxt_fc.source = MDS_PREDICTED
@@ -115,7 +121,6 @@ function forecast(
     le_flb_dm = lexpectancies(mxt_fub.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
     le_fub_dm = lexpectancies(mxt_flb.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
 
-    println("LE Bounds correct: ", le_flb_dm .< le_fub_dm)
 
     rl = mdc_shortlabel(MDC_LIFE_EXPECTANCIES, MDS_OBSERVED)
     le_fc = AgePeriodData(MDC_LIFE_EXPECTANCIES, MDS_PREDICTED, "Forecasted $rl", le_fc_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
@@ -128,7 +133,7 @@ function forecast(
     mxt = [mxt_fc, mxt_flb, mxt_fub]
     elt = [le_fc, le_flb, le_fub]
 
-    return ModelForecasts(kappa, mxt, elt, confidence_level)
+    return ModelForecasts(kappa, mxt, elt, confidence_level; uncertainty=uncertainty)
 
 end
 
@@ -172,6 +177,10 @@ function Base.show(io::IO, t::MIME"text/plain", fd::ForecastedData{ParameterSet{
     if !isnothing(fd.cl)
         println(title_io, "Prediction Interval Level: ", round(fd.cl * 100, digits=0), "%")
     end
+    if !isnothing(fd.uncertainty)
+        println(title_io, "Uncertainty Accounted For: ", fd.uncertainty == UM_INNOVATION_ONLY ? "Random Walk Innovation Only" : "Random Walk Innovation + Drift")
+    end
+
     title = String(take!(title_io))
     fd_config = table_config(io, title=title, rows=rows, row_label_title=rt, headers=headers, formatters=gen_seperator(3))
 
@@ -232,6 +241,9 @@ function Base.show(io::IO, t::MIME"text/plain", fd::ForecastedData{AgePeriodData
     println(title_io, "Forecasted Data: ", fd.label)
     if !isnothing(fd.cl)
         println(title_io, "Prediction Interval Level: ", round(fd.cl * 100, digits=0), "%")
+    end
+    if !isnothing(fd.uncertainty)
+        println(title_io, "Uncertainty Accounted For: ", fd.uncertainty == UM_INNOVATION_ONLY ? "Random Walk Innovation Only" : "Random Walk Innovation + Drift")
     end
 
     if !isnothing(ub_data) && !isnothing(lb_data)

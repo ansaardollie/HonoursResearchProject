@@ -16,8 +16,11 @@ using Reexport
 using Roots
 using Base.Threads
 using Optim
-
+using ThreadsX
 using Distributions
+
+import StatsBase: weights
+
 
 
 

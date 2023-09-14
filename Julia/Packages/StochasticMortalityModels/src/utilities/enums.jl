@@ -10,6 +10,7 @@ export a0_config
 export UncertaintyMode, UM_INNOVATION_ONLY, UM_INNOVDRIFT
 export AdjustmentChoice, AC_NONE, AC_DT, AC_E0, AC_DXT
 export JumpOffRate, JR_FITTED, JR_ACTUAL
+export ForecastVariable, FV_RATE, FV_LOGRATE, FV_LE, FV_DEATHS
 
 @enum Sex begin
     SEX_BOTH = 1
@@ -68,6 +69,13 @@ end
 @enum UncertaintyMode begin
     UM_INNOVATION_ONLY = 1
     UM_INNOVDRIFT = 2
+end
+
+@enum ForecastVariable begin
+    FV_LOGRATE = 1
+    FV_RATE = 2
+    FV_LE = 3
+    FV_DEATHS = 4
 end
 
 
