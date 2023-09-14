@@ -214,3 +214,24 @@ function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
 end
 
 
+
+# function Base.propertynames(m::MortalityModel, private::Bool=false)
+#     return (
+#         :sex,
+#         :location,
+#         :ages,
+#         :Ages,
+#         :years,
+#         :Years,
+#         :exposures,
+#         :Exposures,
+#         :rates,
+#         :Rates,
+#         :logrates,
+#         :LogRates,
+#         :deaths,
+#         :Deaths,
+#         :approximatedeaths,
+#         :ApproximateDeaths,
+#         :life)
+# end

@@ -230,7 +230,7 @@ function Base.:+(ps::ParameterSet, apd::AgePeriodData)
     sum(ps.range.values .== range_to_check.values) == length(ps) || throw(DimensionMismatch("$(direction == DD_AGE ? "Ages" : "Years") dont match"))
 
     rs_size = direction == DD_YEAR ? (1, length(ps)) : (length(ps), 1)
-    dm = apd.data
+    dm = apd.values
     vals = reshape(ps.values, rs_size...)
 
     result = vals .+ dm

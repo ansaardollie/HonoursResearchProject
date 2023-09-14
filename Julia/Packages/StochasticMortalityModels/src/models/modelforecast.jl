@@ -38,13 +38,13 @@ function forecast(
     println("Use Actual Rates for jumpoff ", use_actual)
 
     println("Actual Rates")
-    println(model.rates.fit.data[:, end])
+    println(model.rates.fit.values[:, end])
     println("Fitted Rates")
-    println(vec(mxt_hat(model.parameters, years=[years[end]]).data))
+    println(vec(mxt_hat(model.parameters, years=[years[end]]).values))
 
     jumpoff_rates = use_actual ?
-                    model.rates.fit.data[:, end] :
-                    vec(mxt_hat(model.parameters, years=[years[end]]).data)
+                    model.rates.fit.values[:, end] :
+                    vec(mxt_hat(model.parameters, years=[years[end]]).values)
 
 
     log_jr = log.(jumpoff_rates)
@@ -97,13 +97,13 @@ function forecast(
     mxt_flb = mxt_hat(flb_params)
     mxt_fub = mxt_hat(fub_params)
 
-    for i in eachindex(mxt_flb.data)
-        lb = mxt_flb.data[i]
-        ub = mxt_fub.data[i]
+    for i in eachindex(mxt_flb.values)
+        lb = mxt_flb.values[i]
+        ub = mxt_fub.values[i]
 
         if ub < lb
-            mxt_flb.data[i] = ub
-            mxt_fub.data[i] = lb
+            mxt_flb.values[i] = ub
+            mxt_fub.values[i] = lb
         end
     end
 
@@ -117,9 +117,9 @@ function forecast(
     @reset mxt_flb.label = "Forecasted $(round(confidence_level*100,digits=0))% LB $rl"
     @reset mxt_fub.label = "Forecasted $(round(confidence_level*100,digits=0))% LB $rl"
 
-    le_fc_dm = lexpectancies(mxt_fc.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
-    le_flb_dm = lexpectancies(mxt_fub.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
-    le_fub_dm = lexpectancies(mxt_flb.data, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+    le_fc_dm = lexpectancies(mxt_fc.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+    le_flb_dm = lexpectancies(mxt_fub.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+    le_fub_dm = lexpectancies(mxt_flb.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
 
 
     rl = mdc_shortlabel(MDC_LIFE_EXPECTANCIES, MDS_OBSERVED)
@@ -193,15 +193,15 @@ end
 
 function Base.show(io::IO, t::MIME"text/plain", fd::ForecastedData{AgePeriodData{Float64}})
 
-    fc_exp = Int(floor(minimum(log10.(abs.(fd.forecast.data)))))
-    ub_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(fd.upper.data)))))
-    lb_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(fd.upper.data)))))
+    fc_exp = Int(floor(minimum(log10.(abs.(fd.forecast.values)))))
+    ub_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(fd.upper.values)))))
+    lb_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(fd.upper.values)))))
 
     rescale = fc_exp < -3 || ub_exp < -3 || lb_exp < -3
     scale_exp = minimum([fc_exp, ub_exp, lb_exp])
-    fc_data = rescale ? Int.(round.(fd.forecast.data ./ 10.0^(scale_exp), digits=0)) : fd.forecast.data
-    ub_data = isnothing(fd.upper) ? nothing : rescale ? Int.(round.(fd.upper.data ./ 10.0^(scale_exp), digits=0)) : fd.upper.data
-    lb_data = isnothing(fd.lower) ? nothing : rescale ? Int.(round.(fd.lower.data ./ 10.0^(scale_exp), digits=0)) : fd.lower.data
+    fc_data = rescale ? Int.(round.(fd.forecast.values ./ 10.0^(scale_exp), digits=0)) : fd.forecast.values
+    ub_data = isnothing(fd.upper) ? nothing : rescale ? Int.(round.(fd.upper.values ./ 10.0^(scale_exp), digits=0)) : fd.upper.values
+    lb_data = isnothing(fd.lower) ? nothing : rescale ? Int.(round.(fd.lower.values ./ 10.0^(scale_exp), digits=0)) : fd.lower.values
 
     dm = Matrix{String}(undef, size(fc_data)...)
     sep = gen_seperator(rescale ? 0 : 2)

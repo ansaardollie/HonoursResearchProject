@@ -4,7 +4,7 @@ struct AgePeriodData{T<:Real} <: AbstractMatrix{T}
     category::MortalityDataCategory
     source::MortalityDataSource
     label::String
-    data::Matrix{T}
+    values::Matrix{T}
     ages::DataRange
     periods::DataRange
     rounding::Int
@@ -139,7 +139,7 @@ end
             range = atd.summaryfor == DD_AGE ? atd.periods : atd.ages
             i in range || throw(BoundsError(range, i))
         else
-            i <= length(atd) || throw(BoundsError(atd.data, i))
+            i <= length(atd) || throw(BoundsError(atd.values, i))
         end
     end
 
@@ -147,15 +147,15 @@ end
 
         idx = atd.summaryfor == DD_AGE ? (1, atd.periods.indexer[i]) : (atd.ages.indexer[i], 1)
 
-        return atd.data[idx...]
+        return atd.values[idx...]
 
     else
-        return atd.data[i]
+        return atd.values[i]
     end
 end
 
 function Base.length(atd::AgePeriodData{T}) where {T}
-    return length(atd.data)
+    return length(atd.values)
 end
 function Base.IteratorSize(atd::AgePeriodData{T}) where {T}
     if atd.summarised
@@ -172,7 +172,7 @@ end
 
     @inbounds row = atd.ages.indexer[age]
     @inbounds col = atd.periods.indexer[year]
-    return @inbounds atd.data[row, col]
+    return @inbounds atd.values[row, col]
 end
 
 
@@ -212,7 +212,7 @@ end
 
         return @inbounds AgePeriodData(
             atd.category,
-            atd.data[row_idx, col_idx],
+            atd.values[row_idx, col_idx],
             atd.ages.values[row_idx],
             atd.periods.values[col_idx];
             rounding=atd.rounding,
@@ -228,7 +228,7 @@ end
 
         return @inbounds AgePeriodData(
             atd.category,
-            atd.data[row_idx, col_idx],
+            atd.values[row_idx, col_idx],
             atd.ages,
             atd.periods.values[col_idx];
             rounding=atd.rounding,
@@ -244,7 +244,7 @@ end
 
         return @inbounds AgePeriodData(
             atd.category,
-            atd.data[row_idx, col_idx],
+            atd.values[row_idx, col_idx],
             atd.ages.values[row_idx],
             atd.periods;
             rounding=atd.rounding,
@@ -261,7 +261,7 @@ end
             range = atd.summaryfor == DD_AGE ? atd.periods : atd.ages
             i in range || throw(BoundsError(range, i))
         else
-            i <= length(atd) || throw(BoundsError(atd.data, i))
+            i <= length(atd) || throw(BoundsError(atd.values, i))
         end
     end
 
@@ -269,9 +269,9 @@ end
 
         @inbounds idx = atd.summaryfor == DD_AGE ? (1, atd.periods.indexer[i]) : (atd.ages.indexer[i], 1)
 
-        @inbounds atd.data[idx...] = V
+        @inbounds atd.values[idx...] = V
     else
-        @inbounds atd.data[i] = V
+        @inbounds atd.values[i] = V
     end
     return atd
 end
@@ -284,7 +284,7 @@ end
     @inbounds row = atd.ages.indexer[age]
     @inbounds col = atd.periods.indexer[year]
 
-    @inbounds atd.data[row, col] = V
+    @inbounds atd.values[row, col] = V
 
     return atd
 
@@ -318,14 +318,14 @@ end
         col_idx = idx_y isa Colon ? idx_y : index_year(atd, idx_y...)
 
 
-        atd.data[row_idx, col_idx] = V
+        atd.values[row_idx, col_idx] = V
     elseif atd.summaryfor == DD_AGE
         idx_a = 1
         idx_y = I[1]
         row_idx = 1
         col_idx = idx_y isa Colon ? idx_y : index_year(atd, idx_y...)
 
-        atd.data[row_idx, col_idx] = V
+        atd.values[row_idx, col_idx] = V
 
     elseif atd.summaryfor == DD_YEAR
         idx_a = I[1]
@@ -333,7 +333,7 @@ end
         row_idx = idx_a isa Colon ? idx_a : index_age(atd, idx_a...)
         col_idx = 1
 
-        atd.data[row_idx, col_idx] = V
+        atd.values[row_idx, col_idx] = V
     end
 
 
@@ -555,7 +555,7 @@ function Base.show(io::IO, ::MIME"text/plain", atd::AgePeriodData{T}) where {T<:
     ages = atd.ages.values
 
 
-    (ff, format_results...) = generate_formatter(atd.data, atd.rounding)
+    (ff, format_results...) = generate_formatter(atd.values, atd.rounding)
 
 
     summary = generate_summary(atd.label, atd.ages, atd.periods, format_results)
@@ -572,7 +572,7 @@ function Base.show(io::IO, ::MIME"text/plain", atd::AgePeriodData{T}) where {T<:
     )
 
 
-    pretty_table(io, atd.data; apd_conf...)
+    pretty_table(io, atd.values; apd_conf...)
 end
 
 
@@ -585,7 +585,7 @@ function Base.:+(atd1::AgePeriodData, atd2::AgePeriodData)
 
     sum(atd1.periods .== atd2.periods) == length(atd1.periods) || throw(DimensionMismatch("Periods $(atd1.periods) and $(atd2.periods) not compatible"))
 
-    result = atd1.data .+ atd2.data
+    result = atd1.values .+ atd2.values
     res_source = atd1.source == atd2.source ? atd1.source : MDS_CALCULATED
     res_round = atd1.category == atd2.category ? atd1.rounding : 6
 
@@ -608,7 +608,7 @@ function Base.:*(atd1::AgePeriodData, atd2::AgePeriodData)
 
     sum(atd1.periods .== atd2.periods) == length(atd1.periods) || throw(DimensionMismatch("Periods $(atd1.periods) and $(atd2.periods) not compatible"))
 
-    result = atd1.data .* atd2.data
+    result = atd1.values .* atd2.values
     res_source = atd1.source == atd2.source ? atd1.source : MDS_CALCULATED
     res_round = atd1.category == atd2.category ? atd1.rounding : 6
 

@@ -1,5 +1,5 @@
-obs = rm.deaths.fit.data
-ed = fitted_deaths(rm.parameters, rm.exposures.fit).data
+obs = rm.deaths.fit.values
+ed = fitted_deaths(rm.parameters, rm.exposures.fit).values
 
 include("./models.jl")
 using NLsolve
@@ -27,8 +27,8 @@ end
 
 
 function bootstrap_logrates(model::MortalityModel; n::Int=5000)
-    obs = model.logrates.fit.data
-    fit = mxt_hat(model.parameters; log_scale=true).data
+    obs = model.logrates.fit.values
+    fit = mxt_hat(model.parameters; log_scale=true).values
 
     X = size(obs, 1)
     T = size(obs, 2)

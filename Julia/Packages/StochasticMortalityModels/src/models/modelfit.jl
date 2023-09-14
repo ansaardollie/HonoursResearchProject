@@ -73,9 +73,9 @@ function fitted_deaths(model::MortalityModel)
 end
 
 function basefit!(model::MortalityModel; constrain::Bool=true)
-    α = mapslices(mean, model.logrates.fit.data, dims=2)
+    α = mapslices(mean, model.logrates.fit.values, dims=2)
     alpha = ParameterSet("α(x)", vec(α), model.ranges.fit.ages)
-    Zxt = model.logrates.fit.data .- α
+    Zxt = model.logrates.fit.values .- α
 
     Zxt_svd = svd(Zxt)
     β = Zxt_svd.U[:, 1]
@@ -204,13 +204,13 @@ function adjustkappa_lc!(model::MortalityModel)
     parameters = deepcopy(model.parameters)
 
     deaths = model.calculationmode == CM_JULIA ?
-             model.deaths.fit.data :
-             model.approximatedeaths.fit.data
+             model.deaths.fit.values :
+             model.approximatedeaths.fit.values
 
     betas = parameters.betas.values
     solve_func(fv, jv, kappas) = begin
         @reset parameters.kappas.values = kappas
-        fdxt = fitted_deaths(parameters, model.exposures.fit).data
+        fdxt = fitted_deaths(parameters, model.exposures.fit).values
         jdxt = fdxt .* betas
         func_vals = vec(mapslices(sum, fdxt, dims=1)) - vec(mapslices(sum, deaths, dims=1))
         jacob_diag = vec(mapslices(sum, jdxt, dims=1))
@@ -315,9 +315,9 @@ function adjustkappa_lm!(model::MortalityModel)
     obs_e0 = fill(0, M)
 
     if model.calculationmode == CM_JULIA
-        obs_e0 = vec(model.expectedlifetimes.fit[start_age, :].data)
+        obs_e0 = vec(model.expectedlifetimes.fit[start_age, :].values)
     else
-        mxt = model.rates.fit.data
+        mxt = model.rates.fit.values
         el = mapslices(mx -> expected_lifetime(mx, ages; sex=model.population.sex, at_age=[start_age], mode=model.calculationmode), mxt, dims=1)
         obs_e0 = vec(el)
     end
@@ -361,8 +361,8 @@ end
 function adjustkappa_bms!(model::MortalityModel; constrain::Bool=true)
     parameters = deepcopy(model.parameters)
     years = model.ranges.fit.years.values
-    deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.data : model.approximatedeaths.fit.data
-    exposures = model.exposures.fit.data
+    deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.values : model.approximatedeaths.fit.values
+    exposures = model.exposures.fit.values
 
     alphas = parameters.alphas.values
     betas = parameters.betas.values
@@ -539,9 +539,9 @@ function mt_adjustkappa_lm!(model::MortalityModel)
     obs_e0 = fill(0, M)
 
     if model.calculationmode == CM_JULIA
-        obs_e0 = vec(model.expectedlifetimes.fit[start_age, :].data)
+        obs_e0 = vec(model.expectedlifetimes.fit[start_age, :].values)
     else
-        mxt = model.rates.fit.data
+        mxt = model.rates.fit.values
         el = mapslices(mx -> expected_lifetime(mx, ages; sex=model.population.sex, at_age=[start_age], mode=model.calculationmode), mxt, dims=1)
         obs_e0 = vec(el)
     end
@@ -585,8 +585,8 @@ end
 function mt_adjustkappa_bms!(model::MortalityModel)
     parameters = deepcopy(model.parameters)
     years = model.ranges.fit.years.values
-    deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.data : model.approximatedeaths.fit.data
-    exposures = model.exposures.fit.data
+    deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.values : model.approximatedeaths.fit.values
+    exposures = model.exposures.fit.values
 
     alphas = parameters.alphas.values
     betas = parameters.betas.values
@@ -714,9 +714,9 @@ function choose_period!(model::MortalityModel)
 
     for i in eachindex(potential_starts)
         S = potential_starts[i]
-        lmxt = model.logrates.fit[:, S:m].data
-        dxt = model.deaths.fit[:, S:m].data
-        Ext = model.exposures.fit[:, S:m].data
+        lmxt = model.logrates.fit[:, S:m].values
+        dxt = model.deaths.fit[:, S:m].values
+        Ext = model.exposures.fit[:, S:m].values
         (alpha, beta, kappa) = basefit!(lmxt; constrain_julia=cj, constrain_demography=cd)
 
         (alpha, beta, kappa) = adjustkappa_bms!(dxt, Ext, alpha, beta, kappa; constrain_julia=false)
@@ -736,7 +736,7 @@ end
 
 
 function variation_explained(model::MortalityModel)
-    logrates = model.logrates.all.data
+    logrates = model.logrates.all.values
     α = mapslices(mean, logrates, dims=2)
     centered = logrates .- α
 

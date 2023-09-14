@@ -3,24 +3,24 @@ export maswe
 
 function maswe(model::MortalityModel, forecasts::ModelForecasts; max_lookahead::Int=20, variable::ForecastVariable=FV_LOGRATE)
 
-    exposure_weights = weights(vec(mean(model.exposures.fit.data, dims=2)))
+    exposure_weights = weights(vec(mean(model.exposures.fit.values, dims=2)))
 
     if variable == FV_LOGRATE
-        train = model.logrates.fit.data
-        test = model.logrates.test.data
-        prediction = log.(forecasts.rates.forecast.data)
+        train = model.logrates.fit.values
+        test = model.logrates.test.values
+        prediction = log.(forecasts.rates.forecast.values)
     elseif variable == FV_RATE
-        train = model.rates.fit.data
-        test = model.rates.test.data
-        prediction = forecasts.rates.forecast.data
+        train = model.rates.fit.values
+        test = model.rates.test.values
+        prediction = forecasts.rates.forecast.values
     elseif variable == FV_LE
-        train = model.expectedlifetimes.fit.data
-        test = model.expectedlifetimes.test.data
-        prediction = forecasts.expectedlifetimes.forecast.data
+        train = model.expectedlifetimes.fit.values
+        test = model.expectedlifetimes.test.values
+        prediction = forecasts.expectedlifetimes.forecast.values
     else
-        train = model.deaths.fit.data
-        test = model.deaths.test.data
-        prediction = model.exposures.test.data .* forecasts.rates.forecast.data
+        train = model.deaths.fit.values
+        test = model.deaths.test.values
+        prediction = model.exposures.test.values .* forecasts.rates.forecast.values
     end
 
     results = Vector{Float64}(undef, max_lookahead)
