@@ -8,8 +8,9 @@ export fitrange!,
     adjustkappa_lm!,
     adjustkappa_bms!,
     fit!,
-    choose_period!
-
+    choose_period!,
+    deviance,
+    bms_adjust
 
 function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing, ages::SecondaryRangeSelection=nothing)
 
@@ -253,6 +254,81 @@ function adjustkappa_bms!(model::MortalityModel; constrain::Bool=true)
     end
 
     model.parameters = parameters
+end
+
+
+
+AdjustmentInfoBMS = NamedTuple{(:init, :deaths, :exposures),Tuple{Float64,Vector{Float64},Vector{Float64}}}
+
+function gen_kopt_bms(alphas::Vector{Float64}, betas::Vector{Float64})
+
+    n = length(alphas)
+    gen_func(info::AdjustmentInfoBMS) = begin
+        mx_f = Vector{Float64}(fill(0, n))
+        mx_g = Vector{Float64}(fill(0, n))
+        fdx_f = Vector{Float64}(fill(0, n))
+        fdx_g = Vector{Float64}(fill(0, n))
+        dev_f = Vector{Float64}(fill(0, n))
+        grad_t = Vector{Float64}(fill(0, n))
+        obj_func(kv) = begin
+            kappa = kv[1]
+            copyto!(mx_f, exp.(alphas + betas * kappa))
+            copyto!(fdx_f, info.exposures .* mx_f)
+            copyto!(dev_f, deviance.(info.deaths, fdx_f))
+            return sum(dev_f)
+        end
+
+        grad_func(G, kv) = begin
+            kappa = kv[1]
+            copyto!(mx_g, exp.(alphas + betas * kappa))
+            copyto!(fdx_g, info.exposures .* mx_g)
+            copyto!(grad_t, 2 * (betas .* (fdx_g - info.deaths)))
+            G[1] = sum(grad_t)
+        end
+
+        opt_result = optimize(obj_func, grad_func, [info.init])
+
+        return opt_result.minimizer[1]
+    end
+
+    return gen_func
+end
+
+
+function bms_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}, years::Vector{Int}, deaths::Matrix{Float64}, exposures::Matrix{Float64}; constrain_julia::Bool=true, constrain_demography::Bool=false)
+    data = Dict{Int,AdjustmentInfoBMS}()
+
+    for i in eachindex(years)
+        data[years[i]] = (
+            init=kappas[i],
+            deaths=deaths[:, i],
+            exposures=exposures[:, i]
+        )
+    end
+
+    opt_f = gen_kopt_bms(alphas, betas)
+
+    output = ThreadsX.map(data) do pair
+        return pair[1] => opt_f(pair[2])
+    end
+
+    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
+
+    if constrain_julia
+        c1 = sum(betas)
+        c2 = mean(opt_kappas)
+
+        α = alphas .+ c2 * betas
+        β = betas ./ c1
+        κ = c1 * (opt_kappas .- c2)
+    else
+        c = sum(betas)
+        α = alphas
+        β = betas ./ c
+        κ = c .* opt_kappas
+    end
+
+    return (alphas=α, betas=β, kappas=κ)
 end
 
 
@@ -523,4 +599,3 @@ function variation_explained(model::MortalityModel)
 
     return pve
 end
-

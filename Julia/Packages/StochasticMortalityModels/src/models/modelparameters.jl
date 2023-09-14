@@ -1,4 +1,4 @@
-export ModelParameters, constrain!, constrain_demography!, constrain_julia!, mxt_hat, fitted_deaths
+export ModelParameters, constrain!, constrain_demography!, constrain_julia!, mxt_hat, fitted_deaths, reset!
 
 struct ModelParameters
     alphas::ParameterSet{Float64}
@@ -62,13 +62,21 @@ function ModelParameters(; alphas::Vector{Float64}, betas::Vector{Float64}, kapp
 end
 
 
+function reset!(mp::ModelParameters)
+    mp[:alpha] = fill(0.0, size(mp.alphas, 1))
+    mp[:beta] = fill(0.0, size(mp.betas, 1))
+    mp[:kappa] = fill(0.0, size(mp.kappas, 1))
+
+    return mp
+end
+
 
 @inline function Base.getindex(mp::ModelParameters, i::Int)
     @boundscheck 1 <= i <= 3 || throw_boundserror(mp, i)
     outcome = @match i begin
-        1 => mp.alphas
-        2 => mp.betas
-        3 => mp.kappas
+        1 => mp.alphas.values
+        2 => mp.betas.values
+        3 => mp.kappas.values
     end
     return outcome
 end
@@ -190,7 +198,7 @@ function constrain_julia!(mp::ModelParameters)
     return mp
 end
 
-function mxt_hat(mp::ModelParameters; ages::Union{AbstractVector{Int},Colon}=:, years::Union{AbstractVector{Int},Colon}=:, log_scale::Bool=false)
+function mxt_hat(mp::ModelParameters; ages::Union{AbstractVector{Int},Colon}=:, years::Union{AbstractVector{Int},Colon}=:, log_scale::Bool=false)::AgePeriodData{Float64}
     alpha = mp.alphas[ages]
     beta = mp.betas[ages]
     kappa = mp.kappas[years]
