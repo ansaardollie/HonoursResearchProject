@@ -1,21 +1,21 @@
 export Stratified
 
 struct Stratified{T} <: AbstractVector{T}
-    all::T
-    fit::T
+    complete::T
+    train::T
     test::T
     label::Union{String,Nothing}
 end
 
-function Stratified(all::T, fit::T, test::T, label=nothing) where {T}
-    return Stratified(all, fit, test, label)
+function Stratified(all::T, train::T, test::T, label=nothing) where {T}
+    return Stratified(all, train, test, label)
 end
 
 
 function Base.getindex(s::Stratified{T}, i::Integer) where {T}
     outcome = @match i begin
-        1 => s.all
-        2 => s.fit
+        1 => s.complete
+        2 => s.train
         3 => s.test
         _ => throw(BoundsError(s, i))
     end
@@ -24,8 +24,8 @@ end
 
 function Base.getindex(s::Stratified{T}, i::Symbol) where {T}
     outcome = @match i begin
-        :all => s[1]
-        :fit => s[2]
+        :complete => s[1]
+        :train => s[2]
         :test => s[3]
         _ => throw(BoundsError(s, i))
     end
@@ -43,8 +43,8 @@ end
 
 
 function Base.iterate(s::Stratified{T}) where {T}
-    if isdefined(s, :all)
-        return (s[:all], :all)
+    if isdefined(s, :complete)
+        return (s[:complete], :complete)
     else
         return nothing
     end
@@ -52,14 +52,14 @@ end
 
 function Base.iterate(s::Stratified{T}, state) where {T}
     if isdefined(s, state)
-        return (s[state], state == :all ? :fit : :test)
+        return (s[state], state == :all ? :train : :test)
     else
         return nothing
     end
 end
 
 function Base.eachindex(s::Stratified{T}) where {T}
-    return [:all, :fit, :test]
+    return [:complete, :train, :test]
 end
 
 
@@ -79,28 +79,28 @@ function Base.show(io::IO, t::MIME"text/plain", ayd::Stratified{T}) where {T}
     width = ds[2]
 
     line = repeat("=", width)
-    label = isnothing(ayd.label) ? "$(typeof(ayd.all))" : ayd.label
+    label = isnothing(ayd.label) ? "$(typeof(ayd.complete))" : ayd.label
 
     print(IOContext(io))
     println(io, line)
     println(io)
-    println(io, align_string("$(label) Stratified By Dataset", width, :c))
+    println(io, align_string("$(label) Stratified Datasets", width, :c))
     println(io)
     println(io, line)
     println(io)
-    println(io, align_string("All Data", width, :l))
+    println(io, align_string("Complete Dataset", width, :l))
     println(io)
-    Base.show(io, t, ayd.all)
-    println(io)
-    println(io, line)
-    println(io)
-    println(io, align_string("Fitting Data", width, :l))
-    println(io)
-    Base.show(io, t, ayd.fit)
+    Base.show(io, t, ayd.complete)
     println(io)
     println(io, line)
     println(io)
-    println(io, align_string("Testing Data", width, :l))
+    println(io, align_string("Training Dataset", width, :l))
+    println(io)
+    Base.show(io, t, ayd.train)
+    println(io)
+    println(io, line)
+    println(io)
+    println(io, align_string("Testing Dataset", width, :l))
     println(io)
     Base.show(io, t, ayd.test)
     println(io)

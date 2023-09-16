@@ -808,10 +808,10 @@ weakdeps = ["ChainRulesCore", "InverseFunctions"]
     StatsFunsInverseFunctionsExt = "InverseFunctions"
 
 [[deps.StatsModels]]
-deps = ["DataAPI", "DataStructures", "LinearAlgebra", "Printf", "REPL", "ShiftedArrays", "SparseArrays", "StatsBase", "StatsFuns", "Tables"]
-git-tree-sha1 = "8cc7a5385ecaa420f0b3426f9b0135d0df0638ed"
+deps = ["DataAPI", "DataStructures", "LinearAlgebra", "Printf", "REPL", "ShiftedArrays", "SparseArrays", "StatsAPI", "StatsBase", "StatsFuns", "Tables"]
+git-tree-sha1 = "5cf6c4583533ee38639f73b880f35fc85f2941e0"
 uuid = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
-version = "0.7.2"
+version = "0.7.3"
 
 [[deps.StochasticMortalityModels]]
 deps = ["Accessors", "BenchmarkTools", "CSV", "CategoricalArrays", "Crayons", "DataFrames", "DataFramesMeta", "DelimitedFiles", "Distributions", "Formatting", "ForwardDiff", "GLM", "LinearAlgebra", "Match", "NLsolve", "Optim", "PrettyPrint", "PrettyTables", "Printf", "Reexport", "Roots", "Statistics", "StatsBase", "StringManipulation", "ThreadsX", "TidierData"]

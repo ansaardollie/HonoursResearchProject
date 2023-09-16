@@ -1,26 +1,23 @@
 
 export maswe
 
-function maswe(model::MortalityModel, forecasts::ModelForecasts; max_lookahead::Int=20, variable::ForecastVariable=FV_LOGRATE)
+function maswe(model::MortalityModel2, forecasts::ModelForecasts; max_lookahead::Int=20, variable::ForecastVariable=FV_LOGRATE)
 
-    exposure_weights = weights(vec(mean(model.exposures.fit.values, dims=2)))
+    exposure_weights = weights(vec(mean(exposures(model, DS_TRAIN), dims=2)))
+
+    func = [logrates, rates, lifespans, deaths][Int(variable)]
+
+    train = func(model, DS_TRAIN)
+    test = func(model, DS_TEST)
 
     if variable == FV_LOGRATE
-        train = model.logrates.fit.values
-        test = model.logrates.test.values
-        prediction = log.(forecasts.rates.forecast.values)
+        prediction = logrates(forecasts)
     elseif variable == FV_RATE
-        train = model.rates.fit.values
-        test = model.rates.test.values
-        prediction = forecasts.rates.forecast.values
+        prediction = rates(forecasts)
     elseif variable == FV_LE
-        train = model.expectedlifetimes.fit.values
-        test = model.expectedlifetimes.test.values
-        prediction = forecasts.expectedlifetimes.forecast.values
+        prediction = lifespans(forecasts)
     else
-        train = model.deaths.fit.values
-        test = model.deaths.test.values
-        prediction = model.exposures.test.values .* forecasts.rates.forecast.values
+        prediction = deaths(forecasts)
     end
 
     results = Vector{Float64}(undef, max_lookahead)

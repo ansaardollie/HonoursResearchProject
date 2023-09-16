@@ -1,4 +1,5 @@
 export ForecastedData, ModelForecasts, forecast
+
 struct ForecastedData{T}
     forecast::T
     lower::Optional{T}
@@ -9,57 +10,60 @@ struct ForecastedData{T}
 end
 
 
+
 struct ModelForecasts
     kappas::ForecastedData{ParameterSet{Float64}}
     rates::ForecastedData{AgePeriodData{Float64}}
-    expectedlifetimes::ForecastedData{AgePeriodData{Float64}}
+    lifespans::ForecastedData{AgePeriodData{Float64}}
+    deaths::ForecastedData{AgePeriodData{Float64}}
     uncertainty::Optional{UncertaintyMode}
-    function ModelForecasts(kappas::Vector{ParameterSet{Float64}}, rates::Vector{AgePeriodData{Float64}}, expectedlt::Vector{AgePeriodData{Float64}}, cl::Optional{Float64}=nothing; uncertainty::Optional{UncertaintyMode}=nothing)
+    function ModelForecasts(
+        kappas::Vector{ParameterSet{Float64}},
+        rates::Vector{AgePeriodData{Float64}},
+        ls::Vector{AgePeriodData{Float64}},
+        deaths::Vector{AgePeriodData{Float64}},
+        cl::Optional{Float64}=nothing;
+        uncertainty::Optional{UncertaintyMode}=nothing
+    )
         k = ForecastedData(kappas[1], kappas[2], kappas[3], "κ(t)", cl, uncertainty)
         mxt = ForecastedData(rates[1], rates[2], rates[3], "m(x,t)", cl, uncertainty)
-        elt = ForecastedData(expectedlt[1], expectedlt[2], expectedlt[3], "e(x,t)", cl, uncertainty)
+        elt = ForecastedData(ls[1], ls[2], ls[3], "e(x,t)", cl, uncertainty)
+        dxt = ForecastedData(deaths[1], deaths[2], deaths[3], "d(x,t)", cl, uncertainty)
 
-        return new(k, mxt, elt, uncertainty)
+        return new(k, mxt, elt, dxt, uncertainty)
     end
 end
 
 
 function forecast(
-    model::MortalityModel;
+    model::MortalityModel2;
     confidence_level::Float64=0.95,
     uncertainty::UncertaintyMode=UM_INNOVATION_ONLY
 )
-    years = model.ranges.fit.years.values
+    test_years = years(model, DS_TRAIN)
 
-    kappas = model.parameters.kappas.values
+    κ = kappas(model)
 
-    use_actual = model.variant.jumpoff == JR_ACTUAL
-
-    println("Use Actual Rates for jumpoff ", use_actual)
-
-    println("Actual Rates")
-    println(model.rates.fit.values[:, end])
-    println("Fitted Rates")
-    println(vec(mxt_hat(model.parameters, years=[years[end]]).values))
+    use_actual = jumpoff(model) == JR_ACTUAL
 
     jumpoff_rates = use_actual ?
-                    model.rates.fit.values[:, end] :
-                    vec(mxt_hat(model.parameters, years=[years[end]]).values)
+                    rates(model)[:, end] :
+                    vec(mxt_hat(model.parameters, year_subset=[test_years[end]]).values)
 
 
     log_jr = log.(jumpoff_rates)
 
-    kt = kappas .- kappas[end]
+    kt = κ .- κ[end]
 
-    drift_est = (kt[end] - kt[begin]) / (years[end] - years[begin])
+    drift_est = (kt[end] - kt[begin]) / (test_years[end] - test_years[begin])
 
     difs = kt[2:end] - kt[1:end-1]
 
     rw_var_est = sum((difs .- drift_est) .^ 2) / (length(difs) - 1)
 
-    horizon_agerange = model.ranges.test.ages
+    horizon_agerange = Ages(model, DS_TEST) #model.ranges.test.ages
     ages = horizon_agerange.values
-    horizon_yearrange = model.ranges.test.years
+    horizon_yearrange = Years(model, DS_TEST)#model.ranges.test.years
     horizon = horizon_yearrange.values
 
     se_σ = sqrt(rw_var_est)
@@ -117,40 +121,38 @@ function forecast(
     @reset mxt_flb.label = "Forecasted $(round(confidence_level*100,digits=0))% LB $rl"
     @reset mxt_fub.label = "Forecasted $(round(confidence_level*100,digits=0))% LB $rl"
 
-    le_fc_dm = lexpectancies(mxt_fc.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
-    le_flb_dm = lexpectancies(mxt_fub.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
-    le_fub_dm = lexpectancies(mxt_flb.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=model.calculationmode)
+    cm = calculation(model)
+    le_fc_dm = lexpectancies(mxt_fc.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=cm)
+    le_flb_dm = lexpectancies(mxt_fub.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=cm)
+    le_fub_dm = lexpectancies(mxt_flb.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=cm)
+
+    ext = exposures(model, DS_TEST)
+    dxt_fc_dm = ext .* mxt_fc.values
+    dxt_flb_dm = ext .* mxt_flb.values
+    dxt_fub_dm = ext .* mxt_fub.values
+
+    rl = mdc_shortlabel(MDC_DEATHS, MDS_OBSERVED)
+    dxt_fc = AgePeriodData(MDC_DEATHS, MDS_PREDICTED, "Forecasted $rl", dxt_fc_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
+
+    dxt_flb = AgePeriodData(MDC_DEATHS, MDS_PREDICTED, "Forecasted $(round(confidence_level*100,digits=0))% LB $rl", dxt_flb_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
+
+    dxt_fub = AgePeriodData(MDC_DEATHS, MDS_PREDICTED, "Forecasted $(round(confidence_level*100,digits=0))% UB $rl", dxt_fub_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
 
 
-    rl = mdc_shortlabel(MDC_LIFE_EXPECTANCIES, MDS_OBSERVED)
-    le_fc = AgePeriodData(MDC_LIFE_EXPECTANCIES, MDS_PREDICTED, "Forecasted $rl", le_fc_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
+    rl = mdc_shortlabel(MDC_LIFESPANS, MDS_OBSERVED)
+    le_fc = AgePeriodData(MDC_LIFESPANS, MDS_PREDICTED, "Forecasted $rl", le_fc_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
 
-    le_flb = AgePeriodData(MDC_LIFE_EXPECTANCIES, MDS_PREDICTED, "Forecasted $(round(confidence_level*100,digits=0))% LB $rl", le_flb_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
+    le_flb = AgePeriodData(MDC_LIFESPANS, MDS_PREDICTED, "Forecasted $(round(confidence_level*100,digits=0))% LB $rl", le_flb_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
 
-    le_fub = AgePeriodData(MDC_LIFE_EXPECTANCIES, MDS_PREDICTED, "Forecasted $(round(confidence_level*100,digits=0))% UB $rl", le_fub_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
+    le_fub = AgePeriodData(MDC_LIFESPANS, MDS_PREDICTED, "Forecasted $(round(confidence_level*100,digits=0))% UB $rl", le_fub_dm, horizon_agerange, horizon_yearrange, 3, false, nothing)
 
     kappa = [kappa_fc, kappa_flb, kappa_fub]
     mxt = [mxt_fc, mxt_flb, mxt_fub]
     elt = [le_fc, le_flb, le_fub]
+    dxt = [dxt_fc, dxt_flb, dxt_fub]
 
-    return ModelForecasts(kappa, mxt, elt, confidence_level; uncertainty=uncertainty)
+    return ModelForecasts(kappa, mxt, elt, dxt, confidence_level; uncertainty=uncertainty)
 
-end
-
-
-function seperator(v, i, j)
-    outcome = @sprintf "%.3f" v
-    parts = split(outcome, letter -> letter == '.')
-
-    lhs = reverse(parts[1])
-    rhs = parts[2]
-
-    lseperated = reverse(join(
-        [(i % 3 == 0) ? "$(lhs[i]) " : "$(lhs[i])" for i in eachindex(lhs)]
-    ))
-    rseperated = join([(i % 3 == 0) ? "$(rhs[i]) " : "$(rhs[i])" for i in eachindex(rhs)])
-
-    return strip("$lseperated.$rseperated")
 end
 
 function Base.show(io::IO, t::MIME"text/plain", fd::ForecastedData{ParameterSet{Float64}})
@@ -193,9 +195,12 @@ end
 
 function Base.show(io::IO, t::MIME"text/plain", fd::ForecastedData{AgePeriodData{Float64}})
 
-    fc_exp = Int(floor(minimum(log10.(abs.(fd.forecast.values)))))
-    ub_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(fd.upper.values)))))
-    lb_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(fd.upper.values)))))
+    fc_vals = filter(x -> x != 0.0, fd.forecast.values)
+    lb_vals = filter(x -> x != 0.0, fd.lower.values)
+    ub_vals = filter(x -> x != 0.0, fd.upper.values)
+    fc_exp = Int(floor(minimum(log10.(abs.(fc_vals)))))
+    ub_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(ub_vals)))))
+    lb_exp = isnothing(fd.upper) ? 0 : Int(floor(minimum(log10.(abs.(lb_vals)))))
 
     rescale = fc_exp < -3 || ub_exp < -3 || lb_exp < -3
     scale_exp = minimum([fc_exp, ub_exp, lb_exp])
@@ -285,10 +290,57 @@ function Base.show(io::IO, t::MIME"text/plain", mf::ModelForecasts)
     println(io)
     println(io, line)
     println(io)
-    show(io, t, mf.expectedlifetimes)
+    show(io, t, mf.deaths)
+    println(io)
+    println(io, line)
+    println(io)
+    show(io, t, mf.lifespans)
     println(io)
     println(io, line)
 
 
 end
+
+
+center(fd::ForecastedData{ParameterSet{Float64}}) = fd.forecast.values
+
+lower(fd::ForecastedData{ParameterSet{Float64}}) = fd.lower.values
+
+upper(fd::ForecastedData{ParameterSet{Float64}}) = fd.upper.values
+
+center(fd::ForecastedData{AgePeriodData{Float64}}) = fd.forecast.values
+
+lower(fd::ForecastedData{AgePeriodData{Float64}}) = fd.lower.values
+
+upper(fd::ForecastedData{AgePeriodData{Float64}}) = fd.upper.values
+
+
+Center(fd::ForecastedData{ParameterSet{Float64}}) = fd.forecast
+
+Lower(fd::ForecastedData{ParameterSet{Float64}}) = fd.lower
+
+Upper(fd::ForecastedData{ParameterSet{Float64}}) = fd.upper
+
+
+kappas(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [center, lower, upper][Int(fl)](mf.kappas)
+
+rates(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [center, lower, upper][Int(fl)](mf.rates)
+
+logrates(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = log.([center, lower, upper][Int(fl)](mf.rates))
+
+deaths(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [center, lower, upper][Int(fl)](mf.deaths)
+
+lifespans(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [center, lower, upper][Int(fl)](mf.lifespans)
+
+
+
+Kappas(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [Center, Lower, Upper][Int(fl)](mf.kappas)
+
+Rates(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [Center, Lower, Upper][Int(fl)](mf.rates)
+
+Logrates(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = log.([Center, Lower, Upper][Int(fl)](mf.rates))
+
+Deaths(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [Center, Lower, Upper][Int(fl)](mf.deaths)
+
+Lifespans(mf::ModelForecasts, fl::ForecastLevel=FL_CENTER) = [Center, Lower, Upper][Int(fl)](mf.lifespans)
 

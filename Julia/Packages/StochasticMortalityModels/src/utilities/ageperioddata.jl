@@ -175,8 +175,6 @@ end
     return @inbounds atd.values[row, col]
 end
 
-
-
 @inline function Base.getindex(atd::AgePeriodData{T}, I...) where {T<:Real}
     if I[1] isa CartesianIndex
         idx_a = I[1].I[1]

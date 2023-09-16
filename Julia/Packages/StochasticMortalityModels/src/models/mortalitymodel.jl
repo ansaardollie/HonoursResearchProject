@@ -1,81 +1,96 @@
-export MortalityModel, fitrange!
+export MortalityModel2,
+    sex,
+    location,
+    calculation,
+    adjustment,
+    jumpoff,
+    ages,
+    Ages,
+    years,
+    Years,
+    rates,
+    logrates,
+    deaths,
+    exposures,
+    lifespans,
+    Rates,
+    LogRates,
+    Deaths,
+    Exposures,
+    Lifespans,
+    alphas,
+    Alphas,
+    betas,
+    Betas,
+    kappas,
+    Kappas
 
-mutable struct MortalityModel
+mutable struct MortalityModel2
     population::PopulationInfo
     ranges::Stratified{AgeYearRange}
-    exposures::Stratified{AgePeriodData{Float64}}
-    deaths::Stratified{AgePeriodData{Float64}}
-    approximatedeaths::Stratified{AgePeriodData{Float64}}
-    rates::Stratified{AgePeriodData{Float64}}
-    logrates::Stratified{AgePeriodData{Float64}}
-    expectedlifetimes::Stratified{AgePeriodData{Float64}}
-    data::Stratified{DataFrame}
+    dataframes::Stratified{DataFrame}
+    data::Stratified{MortalityData}
     variant::ModelImplementation
-    calculationmode::CalculationMode
     parameters::ModelParameters
 end
 
-function MortalityModel(;
+function MortalityModel2(;
     population::PopulationInfo,
     ranges::Stratified{AgeYearRange},
     data::DataFrame,
-    calculation_mode::CalculationMode=CM_JULIA,
     variant::ModelImplementation=lc
 )
 
     all_data = deepcopy(data)
-    fit_data = subset(data, ranges.fit.years, ranges.fit.ages)
+    fit_data = subset(data, ranges.train.years, ranges.train.ages)
     test_data = subset(data, ranges.test.years, ranges.test.ages)
 
     strat_df = Stratified{DataFrame}(all_data, fit_data, test_data, "Raw Data Frames")
 
-    df_columns = [:Exposures, :Rates, :LogRates, :Deaths, :ApproximateDeaths, :LifeExpectancies]
+    df_columns = [:Rates, :LogRates, :Exposures, :Deaths, :Lifespans]
 
-    ds = Dict()
+    ds = Dict{Symbol,MortalityData}()
 
-    for column in df_columns
-        datasets = Dict()
-        for strata_sym in eachindex(strat_df)
-            df_subset = strat_df[strata_sym]
-            data_matrix = extract(df_subset, column)::Matrix{Float64}
-            strata_range = ranges[strata_sym]
+    strata = [:complete, :train, :test]
 
-            ageyear_dataset = AgePeriodData(column, data_matrix, strata_range.ages, strata_range.years)
-            datasets[strata_sym] = ageyear_dataset
+    for s in strata
+        years = ranges[s].years.values
+        ages = ranges[s].ages.values
+        data_dict = Dict{Symbol,Matrix{Float64}}()
+        df_subset = strat_df[s]
+        for c in df_columns
+            vals = extract(df_subset, c)::Matrix{Float64}
+            data_dict[c] = vals
         end
-
-        stratified_data = Stratified{AgePeriodData{Float64}}(
-            datasets[:all],
-            datasets[:fit],
-            datasets[:test],
-            datasets[:all].label
-        )
-
-        ds[column] = stratified_data
+        rates = data_dict[:Rates]
+        logrates = data_dict[:LogRates]
+        exposures = data_dict[:Exposures]
+        deaths = data_dict[:Deaths]
+        lifespans = data_dict[:Lifespans]
+        md = MortalityData(MDS_OBSERVED, ages, years, rates, logrates, exposures, deaths, lifespans)
+        ds[s] = md
     end
 
-    mp = ModelParameters(ranges.fit)
+    strat_md = Stratified{MortalityData}(
+        ds[:complete],
+        ds[:train],
+        ds[:test],
+        "Mortality Data"
+    )
 
-    return MortalityModel(
+    mp = ModelParameters(ranges.train)
+
+    return MortalityModel2(
         population,
         ranges,
-        ds[:Exposures],
-        ds[:Deaths],
-        ds[:ApproximateDeaths],
-        ds[:Rates],
-        ds[:LogRates],
-        ds[:LifeExpectancies],
-        strat_df,
-        variant,
-        calculation_mode,
+        strat_df, strat_md, variant,
         mp
     )
 
 end
 
-InitialRangeSelection = Union{Nothing,NamedTuple{(:years, :ages),Tuple{Any,Any}}}
 
-function MortalityModel(
+function MortalityModel2(
     country::AbstractString,
     sex::Sex;
     remove_missing::Bool=true,
@@ -83,8 +98,8 @@ function MortalityModel(
     fitages::Optional{AbstractVector{Int}}=nothing,
     testyears::Optional{AbstractVector{Int}}=nothing,
     testages::Optional{AbstractVector{Int}}=nothing,
-    calculation_mode::CalculationMode=CM_JULIA,
-    variant::ModelImplementation=lc
+    calculation_mode::CalculationChoice=CC_JULIA,
+    variant::ModelImplementation=lc_j
 )
     cd = pwd()
     dir = "$cd/Raw Mortality Data/$country"
@@ -100,10 +115,10 @@ function MortalityModel(
     years = exposure_df.Year
     ages = exposure_df.Age
     exposures = sexmatch(sex, exposure_df.Total, exposure_df.Female, exposure_df.Male)
-    deaths = sexmatch(sex, deaths_df.Total, deaths_df.Female, deaths_df.Male)
+    true_deaths = sexmatch(sex, deaths_df.Total, deaths_df.Female, deaths_df.Male)
     rates = lifetable_df.mx
     logrates = log.(rates)
-    approxdeaths = exposures .* rates
+    approx_deaths = exposures .* rates
     les = lifetable_df.ex
 
     df = DataFrame(
@@ -112,9 +127,8 @@ function MortalityModel(
         :Exposures => exposures,
         :Rates => rates,
         :LogRates => logrates,
-        :Deaths => deaths,
-        :ApproximateDeaths => approxdeaths,
-        :LifeExpectancies => les
+        :Deaths => (calculation_mode == CC_JULIA ? true_deaths : approx_deaths),
+        :Lifespans => les
     )
 
     fitfor = (years=fityears, ages=fitages)
@@ -155,20 +169,18 @@ function MortalityModel(
 
     df = DataFrames.subset(df, :Year => ByRow(y -> y in all_years))
 
-    return MortalityModel(;
+    @reset variant.calculation = calculation_mode
+    return MortalityModel2(;
         population=popinfo,
         ranges=modeldims,
         data=df,
-        calculation_mode=calculation_mode,
         variant=variant
     )
 
 end
 
-SecondaryRangeSelection = Union{Nothing,DataRange,AbstractVector{Int}}
 
-
-function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
+function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel2)
 
     ds = displaysize(io)
     width = ds[2]
@@ -176,17 +188,17 @@ function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
     line = repeat("=", width)
     println(io, line)
     println(io, "Mortality Model")
-    println(io, "Country: ", model.population.location)
-    println(io, "Sex: ", sexmatch(model.population.sex, "Males & Females", "Females", "Males"))
+    println(io, "Country: ", location(model))
+    println(io, "Sex: ", sexmatch(sex(model), "Males & Females", "Females", "Males"))
     println(io, line)
     println(io)
     println(io, "Data Ranges")
     println(io)
 
-    d1ages = strip("$(model.ranges.all.ages)")
-    d1years = strip("$(model.ranges.all.years)")
-    d2ages = strip("$(model.ranges.fit.ages)")
-    d2years = strip("$(model.ranges.fit.years)")
+    d1ages = strip("$(model.ranges.complete.ages)")
+    d1years = strip("$(model.ranges.complete.years)")
+    d2ages = strip("$(model.ranges.train.ages)")
+    d2years = strip("$(model.ranges.train.years)")
     d3ages = strip("$(model.ranges.test.ages)")
     d3years = strip("$(model.ranges.test.years)")
 
@@ -214,24 +226,39 @@ function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
 end
 
 
+sex(m::MortalityModel2)::Sex = m.population.sex
+location(m::MortalityModel2)::String = m.population.location
+calculation(m::MortalityModel2)::CalculationChoice = m.variant.calculation
+adjustment(m::MortalityModel2)::AdjustmentChoice = m.variant.adjustment
+jumpoff(m::MortalityModel2)::JumpoffChoice = m.variant.jumpoff
+ages(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Vector{Int} = stratamatch(strata, m.data.complete.ages, m.data.train.ages, m.data.test.ages)
+Ages(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::DataRange = stratamatch(strata, m.ranges.complete.ages, m.ranges.train.ages, m.ranges.test.ages)
+years(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Vector{Int} = stratamatch(strata, m.data.complete.years, m.data.train.years, m.data.test.years)
+Years(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::DataRange = stratamatch(strata, m.ranges.complete.years, m.ranges.train.years, m.ranges.test.years)
+rates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.rates, m.data.train.rates, m.data.test.rates)
 
-# function Base.propertynames(m::MortalityModel, private::Bool=false)
-#     return (
-#         :sex,
-#         :location,
-#         :ages,
-#         :Ages,
-#         :years,
-#         :Years,
-#         :exposures,
-#         :Exposures,
-#         :rates,
-#         :Rates,
-#         :logrates,
-#         :LogRates,
-#         :deaths,
-#         :Deaths,
-#         :approximatedeaths,
-#         :ApproximateDeaths,
-#         :life)
-# end
+logrates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.logrates, m.data.train.logrates, m.data.test.logrates)
+
+exposures(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.exposures, m.data.train.exposures, m.data.test.exposures)
+
+deaths(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.deaths, m.data.train.deaths, m.data.test.deaths)
+
+lifespans(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.lifespans, m.data.train.lifespans, m.data.test.lifespans)
+
+Rates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Rates(m.data.complete), Rates(m.data.train), Rates(m.data.test))
+
+LogRates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, LogRates(m.data.complete), LogRates(m.data.train), LogRates(m.data.test))
+
+Exposures(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Exposures(m.data.complete), Exposures(m.data.train), Exposures(m.data.test))
+
+Deaths(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Deaths(m.data.complete), Deaths(m.data.train), Deaths(m.data.test))
+
+Lifespans(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Lifespans(m.data.complete), Lifespans(m.data.train), Lifespans(m.data.test))
+
+alphas(m::MortalityModel2)::Vector{Float64} = m.parameters.alphas.values
+Alphas(m::MortalityModel2)::ParameterSet{Float64} = m.parameters.alphas
+betas(m::MortalityModel2)::Vector{Float64} = m.parameters.betas.values
+Betas(m::MortalityModel2)::ParameterSet{Float64} = m.parameters.betas
+kappas(m::MortalityModel2)::Vector{Float64} = m.parameters.kappas.values
+Kappas(m::MortalityModel2)::ParameterSet{Float64} = m.parameters.kappas
+

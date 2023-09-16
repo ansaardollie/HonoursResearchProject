@@ -1,16 +1,19 @@
 export Sex, SEX_BOTH, SEX_FEMALE, SEX_MALE
 export Variant, VARIANT_BMS, VARIANT_LC, VARIANT_LM
-using Core: Argument
-export CalculationMode, CM_DEMOGRAPHY, CM_JULIA
+
+export CalculationChoice, CC_DEMOGRAPHY, CC_JULIA
 export DataDimension, DD_AGE, DD_YEAR
 export MortalityDataSource, MDS_OBSERVED, MDS_FITTED, MDS_PREDICTED, MDS_CALCULATED
-export MortalityDataCategory, MDC_EXPOSURES, MDC_DEATHS, MDC_APPROXIMATE_DEATHS, MDC_RATES, MDC_LOGRATES, MDC_LIFE_EXPECTANCIES, MDC_PARAMETERS, MDC_OTHER
+export MortalityDataCategory, MDC_EXPOSURES, MDC_DEATHS, MDC_APPROXIMATE_DEATHS, MDC_RATES, MDC_LOGRATES, MDC_LIFESPANS, MDC_PARAMETERS, MDC_OTHER
 export sexmatch, mdc_convert, mdc_label, mdc_shortlabel
 export a0_config
 export UncertaintyMode, UM_INNOVATION_ONLY, UM_INNOVDRIFT
 export AdjustmentChoice, AC_NONE, AC_DT, AC_E0, AC_DXT
-export JumpOffRate, JR_FITTED, JR_ACTUAL
+export JumpoffChoice, JR_FITTED, JR_ACTUAL
 export ForecastVariable, FV_RATE, FV_LOGRATE, FV_LE, FV_DEATHS
+export DataStrata, DS_COMPLETE, DS_TRAIN, DS_TEST, stratamatch
+export ForecastLevel, FL_CENTER, FL_LOWER, FL_UPPER
+
 
 @enum Sex begin
     SEX_BOTH = 1
@@ -31,15 +34,15 @@ end
     AC_DXT = 4
 end
 
-@enum JumpOffRate begin
+@enum JumpoffChoice begin
     JR_FITTED = 1
     JR_ACTUAL = 2
 end
 
 
-@enum CalculationMode begin
-    CM_DEMOGRAPHY = 1
-    CM_JULIA = 2
+@enum CalculationChoice begin
+    CC_DEMOGRAPHY = 1
+    CC_JULIA = 2
 end
 
 @enum DataDimension begin
@@ -61,7 +64,7 @@ end
     MDC_APPROXIMATE_DEATHS = 3
     MDC_RATES = 4
     MDC_LOGRATES = 5
-    MDC_LIFE_EXPECTANCIES = 6
+    MDC_LIFESPANS = 6
     MDC_PARAMETERS = 7
     MDC_OTHER = 8
 end
@@ -78,6 +81,20 @@ end
     FV_DEATHS = 4
 end
 
+@enum ForecastLevel begin
+    FL_CENTER = 1
+    FL_LOWER = 2
+    FL_UPPER = 3
+end
+
+@enum DataStrata begin
+    DS_COMPLETE = 1
+    DS_TRAIN = 2
+    DS_TEST = 3
+end
+
+
+
 
 
 
@@ -92,6 +109,10 @@ function sexmatch(sex::Sex, outcomes::Vararg{Union{T,Nothing},3}) where {T}
     return outcome
 end
 
+function stratamatch(strata::DataStrata, outcomes::Vararg{Union{T,Nothing},3}) where {T}
+    return outcomes[Int(strata)]
+end
+
 function mdc_convert(s::Symbol)
     outcome = @match s begin
         :Exposures || :Ext => 1
@@ -99,7 +120,7 @@ function mdc_convert(s::Symbol)
         :ApproximateDeaths || :D̃xt => 3
         :Rates || :mxt => 4
         :LogRates || :logmxt => 5
-        :LifeExpectancies || :ext => 6
+        :LifeExpectancies || :Lifespans || :ext => 6
         :Parameters => 7
         _ => 8
     end
@@ -160,7 +181,7 @@ function mdc_shortlabel(input::Union{MortalityDataCategory,Symbol}, source::Mort
 end
 
 
-function a0_config(mode::CalculationMode, sex::Sex)
+function a0_config(mode::CalculationChoice, sex::Sex)
     if sex == SEX_BOTH
         throw(ArgumentError("Can't calculate a0 for both sexes"))
     end

@@ -4,17 +4,17 @@ function expected_lifetime(
     mx, ages;
     sex::Sex,
     at_age=[0],
-    mode::CalculationMode=CM_JULIA,
+    mode::CalculationChoice=CC_JULIA,
     radix=1_000_000,
     debug=false)
 
 
-    function a0(m0, sex::Sex, mode::CalculationMode)
+    function a0(m0, sex::Sex, mode::CalculationChoice)
         config = a0_config(mode, sex)
 
         (lb, slope, intercept) = config
 
-        idx = mode == CM_JULIA ? 3 : 2
+        idx = mode == CC_JULIA ? 3 : 2
         for i in eachindex(lb)
             if m0 >= lb[i]
                 idx = i
@@ -73,7 +73,7 @@ function lexpectancies(
     years;
     sex,
     at_age=[0],
-    mode::CalculationMode=CM_JULIA,
+    mode::CalculationChoice=CC_JULIA,
     radix=1_000_000,
     debug=false
 )

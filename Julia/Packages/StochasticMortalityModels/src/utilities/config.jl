@@ -16,17 +16,21 @@ function gen_seperator(digits)
             return "$(v)"
         end
         outcome = @eval @sprintf($fmt, $v)
-        parts = split(outcome, letter -> letter == '.')
+        parts = split(outcome, letter -> letter == '.' || letter == '-')
 
-        lhs = reverse(parts[1])
-        rhs = parts[2]
+        lhs = reverse(parts[v < 0 ? 2 : 1])
+        rhs = parts[v < 0 ? 3 : 2]
 
         lseperated = reverse(join(
             [(i % 3 == 0) ? "$(lhs[i]) " : "$(lhs[i])" for i in eachindex(lhs)]
         ))
         rseperated = join([(i % 3 == 0) ? "$(rhs[i]) " : "$(rhs[i])" for i in eachindex(rhs)])
 
-        return strip("$lseperated.$rseperated")
+        if v >= 0
+            return strip("$lseperated.$rseperated")
+        else
+            return "- $(strip("$lseperated.$rseperated"))"
+        end
     end
 
     return seperator

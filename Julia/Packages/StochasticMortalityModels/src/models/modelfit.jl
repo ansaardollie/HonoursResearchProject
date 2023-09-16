@@ -1,63 +1,62 @@
 export fitrange!,
     basefit!,
-    LinearAlgebra,
-    adjustkappa_lc!,
-    adjustkappa_lc_demography!,
-    adjustkappa_lc_demography2!,
     fitted_deaths,
-    adjustkappa_lm!,
-    adjustkappa_bms!,
     fit!,
     choose_period!,
     deviance,
-    bms_adjust
+    lc_adjust,
+    lc_adjust!,
+    lm_adjust,
+    lm_adjust!,
+    bms_adjust,
+    bms_adjust!
 
-function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing, ages::SecondaryRangeSelection=nothing)
+SecondaryRangeSelection = Union{Nothing,DataRange,AbstractVector{Int}}
 
-    if isnothing(years) && isnothing(ages)
+function fitrange!(model::MortalityModel2; yvals::SecondaryRangeSelection=nothing, avals::SecondaryRangeSelection=nothing)
+
+    if isnothing(yvals) && isnothing(avals)
         throw(ArgumentError("Must provide range to fit for"))
     end
 
-    yr = @match years begin
-        ::Nothing => model.ranges.all.years
-        ::DataRange => years
-        ::AbstractArray{Int} => yearrange(years)
-        _ => throw(ArgumentError("Cant pass $(typeof(years)), must be `nothing` a `DataRange object or `Vector{Int}`"))
+    yr::DataRange = @match yvals begin
+        ::Nothing => Years(model, DS_COMPLETE)
+        ::DataRange => yvals
+        ::AbstractArray{Int} => yearrange(yvals)
+        _ => throw(ArgumentError("Cant pass $(typeof(yvals)), must be `nothing` a `DataRange object or `Vector{Int}`"))
     end
 
-    ar = @match ages begin
-        ::Nothing => model.ranges.all.ages
-        ::DataRange => ages
-        ::AbstractArray{Int} => agerange(ages)
-        _ => throw(ArgumentError("Cant pass $(typeof(years)), must be `nothing` a `DataRange object or `Vector{Int}`"))
+    ar::DataRange = @match avals begin
+        ::Nothing => Ages(model, DS_COMPLETE)
+        ::DataRange => avals
+        ::AbstractArray{Int} => agerange(avals)
+        _ => throw(ArgumentError("Cant pass $(typeof(yvals)), must be `nothing` a `DataRange object or `Vector{Int}`"))
     end
 
-    exposures = model.exposures
-    @reset exposures.fit = model.exposures.all[ar, yr]
-    deaths = model.deaths
-    @reset deaths.fit = model.deaths.all[ar, yr]
-    approximatedeaths = model.approximatedeaths
-    @reset approximatedeaths.fit = model.approximatedeaths.all[ar, yr]
-    rates = model.rates
-    @reset rates.fit = model.rates.all[ar, yr]
-    logrates = model.logrates
-    @reset logrates.fit = model.logrates.all[ar, yr]
-    expectedlifetimes = model.expectedlifetimes
-    @reset expectedlifetimes.fit = model.expectedlifetimes.all[ar, yr]
-    ranges::Stratified{AgeYearRange} = Stratified(
-        model.ranges.all,
-        (years=yr, ages=ar)::AgeYearRange,
-        model.ranges.test
+
+    yidx = collect(map(year -> Years(model, DS_COMPLETE).indexer[year], yr.values))
+    aidx = collect(map(age -> Ages(model, DS_COMPLETE).indexer[age], ar.values))
+    train::MortalityData = model.data.train
+
+    @reset train.exposures = exposures(model, DS_COMPLETE)[aidx, yidx]
+    @reset train.deaths = deaths(model, DS_COMPLETE)[aidx, yidx]
+    @reset train.rates = rates(model, DS_COMPLETE)[aidx, yidx]
+    @reset train.logrates = logrates(model, DS_COMPLETE)[aidx, yidx]
+    @reset train.lifespans = lifespans(model, DS_COMPLETE)[aidx, yidx]
+
+    model.data = Stratified{MortalityData}(
+        model.data.complete,
+        train,
+        model.data.test,
+        model.data.label
     )
 
-
-    model.exposures = exposures
-    model.deaths = deaths
-    model.approximatedeaths = approximatedeaths
-    model.rates = rates
-    model.logrates = logrates
-    model.expectedlifetimes = expectedlifetimes
-    model.ranges = ranges
+    model.ranges = Stratified{AgeYearRange}(
+        model.ranges.complete,
+        (years=yr, ages=ar),
+        model.ranges.test,
+        model.ranges.label
+    )
 
     newparams = ModelParameters((years=yr, ages=ar))
 
@@ -66,33 +65,35 @@ function fitrange!(model::MortalityModel; years::SecondaryRangeSelection=nothing
 end
 
 
-function fitted_deaths(model::MortalityModel)
+function fitted_deaths(model::MortalityModel2)
     params = model.parameters
-    exposures = model.exposures.fit
-    return fitted_deaths(params, exposures)
+    return fitted_deaths(params, Exposures(model))
 end
 
-function basefit!(model::MortalityModel; constrain::Bool=true)
-    α = mapslices(mean, model.logrates.fit.values, dims=2)
-    alpha = ParameterSet("α(x)", vec(α), model.ranges.fit.ages)
-    Zxt = model.logrates.fit.values .- α
+function basefit!(model::MortalityModel2; constrain::Bool=true)
+    ar = Ages(model)
+    yr = Years(model)
+    lr = logrates(model)
+    α = mapslices(mean, lr, dims=2)
+    alpha = ParameterSet("α(x)", vec(α), ar)
+    Zxt = lr .- α
 
     Zxt_svd = svd(Zxt)
     β = Zxt_svd.U[:, 1]
-    beta = ParameterSet("β(x)", vec(β), model.ranges.fit.ages)
+    beta = ParameterSet("β(x)", vec(β), ar)
 
     κ = Zxt_svd.V[:, 1] * Zxt_svd.S[1]
-    kappa = ParameterSet("κ(t)", vec(κ), model.ranges.fit.years)
+    kappa = ParameterSet("κ(t)", vec(κ), yr)
 
     mp = ModelParameters(alpha, beta, kappa)
     if constrain
-        constrain!(mp; mode=model.calculationmode)
+        constrain!(mp; mode=calculation(model))
     end
 
     model.parameters = mp
 end
 
-function basefit!(logrates::Matrix{Float64}; constrain_julia::Bool=true, constrain_demography::Bool=false)
+function basefit!(logrates::Matrix{Float64}; constrain::Bool=true, cmode::CalculationChoice=CC_JULIA)
     α = vec(mapslices(mean, logrates, dims=2))
 
     Zxt = logrates .- α
@@ -102,46 +103,51 @@ function basefit!(logrates::Matrix{Float64}; constrain_julia::Bool=true, constra
 
 
     κ = vec(Zxt_svd.V[:, 1] * Zxt_svd.S[1])
-    if constrain_julia
+    if constrain && cmode == CC_JULIA
         c1 = sum(β)
         c2 = mean(κ)
         α = α .+ (c2 .* β)
         β = β ./ c1
         κ = c1 .* (κ .- c2)
-    elseif constrain_demography
+    elseif constrain && cmode == CC_DEMOGRAPHY
         c1 = sum(β)
         β = β ./ c1
         κ = c1 .* κ
     end
 
-    return (alpha=α, beta=β, kappa=κ)
+    return (alphas=α, betas=β, kappas=κ)
 end
 
+function deviance(obs, fit)
+
+    if obs == 0 || fit == 0
+        return 0
+    else
+        return 2 * (obs * log(obs / fit) - (obs - fit))
+    end
+end
 
 AdjustmentInfoLC = NamedTuple{(:init, :deaths, :exposures),Tuple{Float64,Vector{Float64},Vector{Float64}}}
 
-function gen_kopt_lc(alphas::Vector{Float64}, betas::Vector{Float64})
+AdjustmentInfoLM = NamedTuple{(:init, :e0),Tuple{Float64,Float64}}
 
-    n = length(alphas)
+AdjustmentInfoBMS = NamedTuple{(:init, :deaths, :exposures),Tuple{Float64,Vector{Float64},Vector{Float64}}}
+
+function gen_kopt_lc(
+    ax::Vector{Float64},
+    bx::Vector{Float64}
+)
+
+    n = length(ax)
     gen_func(info::AdjustmentInfoLC) = begin
         mx_f = Vector{Float64}(fill(0, n))
         mx_j = Vector{Float64}(fill(0, n))
         fdx_f = Vector{Float64}(fill(0, n))
         fdx_j = Vector{Float64}(fill(0, n))
 
-        # fj!(F, G, kv) = begin
-        #     kappa = kv[1]
-        #     copyto!(mx_f, exp.(alphas + betas * kappa))
-        #     copyto!(fdx_f, info.exposures .* mx_f)
-
-        #     if !isnothing(F)
-
-        #     end
-        # end
-
         solve_func!(F, kv) = begin
             kappa = kv[1]
-            copyto!(mx_f, exp.(alphas + betas * kappa))
+            copyto!(mx_f, exp.(ax + bx * kappa))
             copyto!(fdx_f, info.exposures .* mx_f)
 
             F[1] = sum(fdx_f .- info.deaths)
@@ -149,9 +155,9 @@ function gen_kopt_lc(alphas::Vector{Float64}, betas::Vector{Float64})
 
         jacob_func!(G, kv) = begin
             kappa = kv[1]
-            copyto!(mx_j, exp.(alphas + betas * kappa))
+            copyto!(mx_j, exp.(ax + bx * kappa))
             copyto!(fdx_j, info.exposures .* mx_j)
-            G[1] = sum(fdx_j .* betas)
+            G[1] = sum(fdx_j .* bx)
         end
 
         solve_result = nlsolve(solve_func!, jacob_func!, [info.init])
@@ -162,93 +168,22 @@ function gen_kopt_lc(alphas::Vector{Float64}, betas::Vector{Float64})
     return gen_func
 end
 
+function gen_kopt_lm(
+    ax::Vector{Float64},
+    bx::Vector{Float64},
+    x::Vector{Int},
+    gender::Sex,
+    start_age::Int,
+    mode::CalculationChoice=CC_JULIA
+)
 
-function lc_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}, years::Vector{Int}, deaths::Matrix{Float64}, exposures::Matrix{Float64}; constrain_julia::Bool=true, constrain_demography::Bool=false)
-    data = Dict{Int,AdjustmentInfoLC}()
-
-    for i in eachindex(years)
-        data[years[i]] = (
-            init=kappas[i],
-            deaths=deaths[:, i],
-            exposures=exposures[:, i]
-        )
-    end
-
-    opt_f = gen_kopt_lc(alphas, betas)
-
-    output = ThreadsX.map(data) do pair
-        return pair[1] => opt_f(pair[2])
-    end
-
-    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
-
-    if constrain_julia
-        c1 = sum(betas)
-        c2 = mean(opt_kappas)
-
-        α = alphas .+ c2 * betas
-        β = betas ./ c1
-        κ = c1 * (opt_kappas .- c2)
-    elseif constrain_demography
-        c = sum(betas)
-        α = alphas
-        β = betas ./ c
-        κ = c .* opt_kappas
-    end
-
-    return (alphas=α, betas=β, kappas=κ)
-end
-
-
-function adjustkappa_lc!(model::MortalityModel)
-    parameters = deepcopy(model.parameters)
-
-    deaths = model.calculationmode == CM_JULIA ?
-             model.deaths.fit.values :
-             model.approximatedeaths.fit.values
-
-    betas = parameters.betas.values
-    solve_func(fv, jv, kappas) = begin
-        @reset parameters.kappas.values = kappas
-        fdxt = fitted_deaths(parameters, model.exposures.fit).values
-        jdxt = fdxt .* betas
-        func_vals = vec(mapslices(sum, fdxt, dims=1)) - vec(mapslices(sum, deaths, dims=1))
-        jacob_diag = vec(mapslices(sum, jdxt, dims=1))
-
-        if !isnothing(fv)
-            copyto!(fv, func_vals)
-        end
-
-        if !isnothing(jv)
-            k = length(jacob_diag)
-            for i in 1:k, j in 1:k
-                jv[i, j] = (i == j) ? jacob_diag[i] : 0
-            end
-        end
-    end
-
-    solve_out = nlsolve(only_fj!(solve_func), parameters.kappas.values)
-    @reset parameters.kappas.values = solve_out.zero
-
-    if model.calculationmode == CM_JULIA
-        model.parameters = constrain_julia!(parameters)
-    else
-        model.parameters = parameters
-    end
-end
-
-
-AdjustmentInfoLM = NamedTuple{(:init, :e0),Tuple{Float64,Float64}}
-
-function gen_kopt_lm(alphas::Vector{Float64}, betas::Vector{Float64}, ages::Vector{Int}, sex::Sex, start_age::Int, mode::CalculationMode=CM_JULIA)
-
-    n = length(alphas)
+    n = length(ax)
     gen_func(info::AdjustmentInfoLM) = begin
 
         solve_func!(F, kv) = begin
             kappa = kv[1]
-            mx = exp.(alphas + betas * kappa)
-            fe0 = expected_lifetime(mx, ages; sex=sex, at_age=[start_age], mode=mode)
+            mx = exp.(ax + bx * kappa)
+            fe0 = expected_lifetime(mx, x; sex=gender, at_age=[start_age], mode=mode)
             F[1] = fe0[1] - info.e0
         end
 
@@ -261,157 +196,12 @@ function gen_kopt_lm(alphas::Vector{Float64}, betas::Vector{Float64}, ages::Vect
     return gen_func
 end
 
+function gen_kopt_bms(
+    ax::Vector{Float64},
+    bx::Vector{Float64}
+)
 
-function lm_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}, years::Vector{Int}, ages::Vector{Int}, rates::Matrix{Float64}, mrls::Matrix{Float64}, sex::Sex; cmode::CalculationMode=CM_JULIA, constrain::Bool=true)
-    data = Dict{Int,AdjustmentInfoLM}()
-
-    start_age = ages[1]
-    if cmode == CM_JULIA
-        obs_e0 = mrls[1, :]
-    else
-        el = mapslices(mx -> expected_lifetime(mx, ages; sex=sex, at_age=[start_age], mode=cmode), rates, dims=1)
-        obs_e0 = vec(el)
-    end
-
-    for i in eachindex(years)
-        data[years[i]] = (
-            init=kappas[i],
-            e0=obs_e0[i])
-    end
-
-    solve_f = gen_kopt_lm(alphas, betas, ages, sex, start_age, cmode)
-
-    output = ThreadsX.map(data) do pair
-        return pair[1] => solve_f(pair[2])
-    end
-
-    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
-
-    if constrain &&
-       cmode == CM_JULIA
-        c1 = sum(betas)
-        c2 = mean(opt_kappas)
-
-        α = alphas .+ c2 * betas
-        β = betas ./ c1
-        κ = c1 * (opt_kappas .- c2)
-    elseif constrain && cmode == CM_DEMOGRAPHY
-        c = sum(betas)
-        α = alphas
-        β = betas ./ c
-        κ = c .* opt_kappas
-    end
-
-    return (alphas=α, betas=β, kappas=κ)
-end
-
-function adjustkappa_lm!(model::MortalityModel)
-    M = length(model.ranges.fit.years)
-
-    parameters = deepcopy(model.parameters)
-    ages = model.ranges.fit.ages.values
-    years = model.ranges.fit.years.values
-    start_age = ages[1]
-    obs_e0 = fill(0, M)
-
-    if model.calculationmode == CM_JULIA
-        obs_e0 = vec(model.expectedlifetimes.fit[start_age, :].values)
-    else
-        mxt = model.rates.fit.values
-        el = mapslices(mx -> expected_lifetime(mx, ages; sex=model.population.sex, at_age=[start_age], mode=model.calculationmode), mxt, dims=1)
-        obs_e0 = vec(el)
-    end
-
-    obs_e0_ps = ParameterSet("Expected Lifetimes", obs_e0, model.ranges.fit.years)
-
-    opt_kappas = Vector{Float64}()
-    for year in years
-        kappas = parameters.kappas[year].values
-        alphas = parameters.alphas.values
-        betas = parameters.betas.values
-
-        e0 = obs_e0_ps[year].values[1]
-        solve_func!(F, kv) = begin
-            kappa = kv[1]
-            mxt = exp.(alphas + (betas * kappa))
-            le = expected_lifetime(mxt, ages; sex=model.population.sex, mode=model.calculationmode, at_age=[start_age])
-            F[1] = le[1] - e0
-        end
-
-        solve_out = nlsolve(solve_func!, kappas, autodiff=:forward, method=:newton)
-
-        push!(opt_kappas, solve_out.zero[1])
-    end
-
-    @reset parameters.kappas.values = opt_kappas
-
-    model.parameters = parameters
-end
-
-function deviance(obs, fit)
-
-    if obs == 0 || fit == 0
-        return 0
-    else
-        return 2 * (obs * log(obs / fit) - (obs - fit))
-    end
-end
-
-
-function adjustkappa_bms!(model::MortalityModel; constrain::Bool=true)
-    parameters = deepcopy(model.parameters)
-    years = model.ranges.fit.years.values
-    deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.values : model.approximatedeaths.fit.values
-    exposures = model.exposures.fit.values
-
-    alphas = parameters.alphas.values
-    betas = parameters.betas.values
-    init_kappas = parameters.kappas.values
-
-    opt_kappas = Vector{Float64}()
-    for i in eachindex(years)
-        year = years[i]
-        dt_byx = vec(deaths[:, i])
-        et_byx = vec(exposures[:, i])
-        k0 = init_kappas[i]
-
-        obj_func(kv) = begin
-            kappa = kv[1]
-            mx = exp.(alphas + betas * kappa)
-            fdx = et_byx .* mx
-            dev = deviance.(dt_byx, fdx)
-            return sum(dev)
-        end
-
-        grad_func(G, kv) = begin
-            kappa = kv[1]
-            mx = exp.(alphas + betas * kappa)
-            fdx = et_byx .* mx
-            gterms = 2 * (betas .* (fdx - dt_byx))
-            G[1] = sum(gterms)
-        end
-
-        opt_result = optimize(obj_func, grad_func, [k0])
-        push!(opt_kappas, opt_result.minimizer[1])
-    end
-
-
-    @reset parameters.kappas.values = opt_kappas
-
-    if constrain
-        parameters = constrain!(parameters; mode=model.calculationmode)
-    end
-
-    model.parameters = parameters
-end
-
-
-
-AdjustmentInfoBMS = NamedTuple{(:init, :deaths, :exposures),Tuple{Float64,Vector{Float64},Vector{Float64}}}
-
-function gen_kopt_bms(alphas::Vector{Float64}, betas::Vector{Float64})
-
-    n = length(alphas)
+    n = length(ax)
     gen_func(info::AdjustmentInfoBMS) = begin
         mx_f = Vector{Float64}(fill(0, n))
         mx_g = Vector{Float64}(fill(0, n))
@@ -421,7 +211,7 @@ function gen_kopt_bms(alphas::Vector{Float64}, betas::Vector{Float64})
         grad_t = Vector{Float64}(fill(0, n))
         obj_func(kv) = begin
             kappa = kv[1]
-            copyto!(mx_f, exp.(alphas + betas * kappa))
+            copyto!(mx_f, exp.(ax + bx * kappa))
             copyto!(fdx_f, info.exposures .* mx_f)
             copyto!(dev_f, deviance.(info.deaths, fdx_f))
             return sum(dev_f)
@@ -429,9 +219,9 @@ function gen_kopt_bms(alphas::Vector{Float64}, betas::Vector{Float64})
 
         grad_func(G, kv) = begin
             kappa = kv[1]
-            copyto!(mx_g, exp.(alphas + betas * kappa))
+            copyto!(mx_g, exp.(ax + bx * kappa))
             copyto!(fdx_g, info.exposures .* mx_g)
-            copyto!(grad_t, 2 * (betas .* (fdx_g - info.deaths)))
+            copyto!(grad_t, 2 * (bx .* (fdx_g - info.deaths)))
             G[1] = sum(grad_t)
         end
 
@@ -443,19 +233,27 @@ function gen_kopt_bms(alphas::Vector{Float64}, betas::Vector{Float64})
     return gen_func
 end
 
+function lc_adjust(
+    ax::Vector{Float64},
+    bx::Vector{Float64},
+    kt::Vector{Float64},
+    t::Vector{Int},
+    dxt::Matrix{Float64},
+    Ext::Matrix{Float64};
+    constrain::Bool=true,
+    cmode::CalculationChoice=CC_JULIA
+)
+    data = Dict{Int,AdjustmentInfoLC}()
 
-function bms_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}, years::Vector{Int}, deaths::Matrix{Float64}, exposures::Matrix{Float64}; constrain_julia::Bool=true, constrain_demography::Bool=false)
-    data = Dict{Int,AdjustmentInfoBMS}()
-
-    for i in eachindex(years)
-        data[years[i]] = (
-            init=kappas[i],
-            deaths=deaths[:, i],
-            exposures=exposures[:, i]
+    for i in eachindex(t)
+        data[t[i]] = (
+            init=kt[i],
+            deaths=dxt[:, i],
+            exposures=Ext[:, i]
         )
     end
 
-    opt_f = gen_kopt_bms(alphas, betas)
+    opt_f = gen_kopt_lc(ax, bx)
 
     output = ThreadsX.map(data) do pair
         return pair[1] => opt_f(pair[2])
@@ -463,204 +261,187 @@ function bms_adjust(alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vec
 
     opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
 
-    if constrain_julia
-        c1 = sum(betas)
+    if constrain && cmode == CC_JULIA
+        c1 = sum(bx)
         c2 = mean(opt_kappas)
 
-        α = alphas .+ c2 * betas
-        β = betas ./ c1
+        α = ax .+ c2 * bx
+        β = bx ./ c1
         κ = c1 * (opt_kappas .- c2)
-    else
-        c = sum(betas)
-        α = alphas
-        β = betas ./ c
+    elseif constrain && cmode == CC_DEMOGRAPHY
+        c = sum(bx)
+        α = ax
+        β = bx ./ c
         κ = c .* opt_kappas
+    else
+        α = ax
+        β = bx
+        κ = opt_kappas
     end
 
     return (alphas=α, betas=β, kappas=κ)
 end
 
+function lm_adjust(
+    ax::Vector{Float64},
+    bx::Vector{Float64},
+    kt::Vector{Float64},
+    t::Vector{Int},
+    x::Vector{Int},
+    mxt::Matrix{Float64},
+    ext::Matrix{Float64},
+    gender::Sex;
+    cmode::CalculationChoice=CC_JULIA,
+    constrain::Bool=true
+)
+    data = Dict{Int,AdjustmentInfoLM}()
 
-function adjustkappa_bms!(deaths::Matrix{Float64}, exposures::Matrix{Float64}, alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64}; constrain_julia::Bool=true)
-
-    init_kappas = kappas
-
-    opt_kappas = Vector{Float64}()
-    for i in eachindex(init_kappas)
-
-        dt_byx = vec(deaths[:, i])
-        et_byx = vec(exposures[:, i])
-        k0 = init_kappas[i]
-
-        obj_func(kv) = begin
-            kappa = kv[1]
-            mx = exp.(alphas + betas * kappa)
-            fdx = et_byx .* mx
-            dev = deviance.(dt_byx, fdx)
-            return sum(dev)
-        end
-
-        grad_func(G, kv) = begin
-            kappa = kv[1]
-            mx = exp.(alphas + betas * kappa)
-            fdx = et_byx .* mx
-            gterms = 2 * (betas .* (fdx - dt_byx))
-            G[1] = sum(gterms)
-        end
-
-        opt_result = optimize(obj_func, grad_func, [k0])
-        push!(opt_kappas, opt_result.minimizer[1])
-    end
-
-    α = alphas
-    β = betas
-    κ = opt_kappas
-
-    if constrain_julia
-        c1 = sum(β)
-        c2 = mean(κ)
-        α = α .+ (c2 .* β)
-        β = β ./ c1
-        κ = c1 .* (κ .- c2)
-    end
-
-    return (alpha=α, beta=β, kappa=κ)
-end
-
-
-
-function mt_adjustkappa_lm!(model::MortalityModel)
-    M = length(model.ranges.fit.years)
-
-    parameters = deepcopy(model.parameters)
-    ages = model.ranges.fit.ages.values
-    years = model.ranges.fit.years.values
-    start_age = ages[1]
-    obs_e0 = fill(0, M)
-
-    if model.calculationmode == CM_JULIA
-        obs_e0 = vec(model.expectedlifetimes.fit[start_age, :].values)
+    start_age = x[1]
+    if cmode == CC_JULIA
+        obs_e0 = ext[1, :]
     else
-        mxt = model.rates.fit.values
-        el = mapslices(mx -> expected_lifetime(mx, ages; sex=model.population.sex, at_age=[start_age], mode=model.calculationmode), mxt, dims=1)
+        el = mapslices(mx -> expected_lifetime(mx, x; sex=gender, at_age=[start_age], mode=cmode), mxt, dims=1)
         obs_e0 = vec(el)
     end
 
-    obs_e0_ps = ParameterSet("Expected Lifetimes", obs_e0, model.ranges.fit.years)
-
-    opt_kappas = Dict{Int,Float64}()
-    res_channel = Channel(c -> begin
-        @threads for year in years
-            kappas = parameters.kappas[year].values
-            alphas = parameters.alphas.values
-            betas = parameters.betas.values
-
-            e0 = obs_e0_ps[year].values[1]
-            solve_func!(F, kv) = begin
-                kappa = kv[1]
-                mxt = exp.(alphas + (betas * kappa))
-                le = expected_lifetime(mxt, ages; sex=model.population.sex, mode=model.calculationmode, at_age=[start_age])
-                F[1] = le[1] - e0
-            end
-
-            solve_out = nlsolve(solve_func!, kappas, autodiff=:forward, method=:newton)
-
-            put!(c, (year=year, kappa=solve_out.zero[1]))
-        end
-    end)
-
-
-    for res in res_channel
-        year = res.year
-        kappa = res.kappa
-        opt_kappas[year] = kappa
+    for i in eachindex(t)
+        data[t[i]] = (
+            init=kt[i],
+            e0=obs_e0[i])
     end
 
-    @reset parameters.kappas.values = [opt_kappas[k] for k in sort(collect(keys(opt_kappas)))]
+    solve_f = gen_kopt_lm(ax, bx, x, gender, start_age, cmode)
 
-    model.parameters = parameters
-end
-
-
-function mt_adjustkappa_bms!(model::MortalityModel)
-    parameters = deepcopy(model.parameters)
-    years = model.ranges.fit.years.values
-    deaths = model.calculationmode == CM_JULIA ? model.deaths.fit.values : model.approximatedeaths.fit.values
-    exposures = model.exposures.fit.values
-
-    alphas = parameters.alphas.values
-    betas = parameters.betas.values
-    init_kappas = parameters.kappas.values
-
-    opt_kappas = Dict{Int,Float64}()
-    res_channel = Channel(c -> begin
-        @threads for i in eachindex(years)
-            year = years[i]
-            dt_byx = vec(deaths[:, i])
-            et_byx = vec(exposures[:, i])
-            k0 = init_kappas[i]
-
-            obj_func(kv) = begin
-                kappa = kv[1]
-                mx = exp.(alphas + betas * kappa)
-                fdx = et_byx .* mx
-                dev = deviance.(dt_byx, fdx)
-                return sum(dev)
-            end
-
-            grad_func(G, kv) = begin
-                kappa = kv[1]
-                mx = exp.(alphas + betas * kappa)
-                fdx = et_byx .* mx
-                gterms = 2 * (betas .* (fdx - dt_byx))
-                G[1] = sum(gterms)
-            end
-
-            opt_result = optimize(obj_func, grad_func, [k0])
-            put!(c, (year=year, kappa=opt_result.minimizer[1]))
-        end
-    end)
-
-    for res in res_channel
-        year = res.year
-        kappa = res.kappa
-        opt_kappas[year] = kappa
+    output = ThreadsX.map(data) do pair
+        return pair[1] => solve_f(pair[2])
     end
 
+    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
 
+    if constrain && cmode == CC_JULIA
+        c1 = sum(bx)
+        c2 = mean(opt_kappas)
 
-    @reset parameters.kappas.values = [opt_kappas[k] for k in sort(collect(keys(opt_kappas)))]
-
-    if model.calculationmode == CM_JULIA
-        parameters = constrain_julia!(parameters)
-    end
-
-    model.parameters = parameters
-end
-
-
-function fit!(model::MortalityModel; constrain::Bool=true, multithreaded::Bool=false, choose_period::Bool=false)
-
-    if choose_period
-        choose_period!(model)
-    end
-
-    basefit!(model, constrain=constrain)
-
-    if model.variant.adjustment == AC_DXT
-        multithreaded ? mt_adjustkappa_bms!(model) : adjustkappa_bms!(model)
-    elseif model.variant.adjustment == AC_E0
-        multithreaded ? mt_adjustkappa_lm!(model) : adjustkappa_lm!(model)
+        α = ax .+ c2 * bx
+        β = bx ./ c1
+        κ = c1 * (opt_kappas .- c2)
+    elseif constrain && cmode == CC_DEMOGRAPHY
+        c = sum(bx)
+        α = ax
+        β = bx ./ c
+        κ = c .* opt_kappas
     else
-        adjustkappa_lc!(model)
+        α = ax
+        β = bx
+        κ = opt_kappas
     end
 
-    return model
-
+    return (alphas=α, betas=β, kappas=κ)
 end
 
+function bms_adjust(
+    ax::Vector{Float64},
+    bx::Vector{Float64},
+    kt::Vector{Float64},
+    t::Vector{Int},
+    dxt::Matrix{Float64},
+    Ext::Matrix{Float64};
+    constrain::Bool=true,
+    cmode::CalculationChoice=CC_JULIA
+)
+    data = Dict{Int,AdjustmentInfoBMS}()
 
-function calculate_deviance_statistic(deaths::Matrix{Float64}, exposures::Matrix{Float64}, alphas::Vector{Float64}, betas::Vector{Float64}, kappas::Vector{Float64})
+    for i in eachindex(t)
+        data[t[i]] = (
+            init=kt[i],
+            deaths=dxt[:, i],
+            exposures=Ext[:, i]
+        )
+    end
+
+    opt_f = gen_kopt_bms(ax, bx)
+
+    output = ThreadsX.map(data) do pair
+        return pair[1] => opt_f(pair[2])
+    end
+
+    opt_kappas = map(x -> x[2], sort!(output, by=p -> p[1]))
+
+    if constrain && cmode == CC_JULIA
+        c1 = sum(bx)
+        c2 = mean(opt_kappas)
+
+        α = ax .+ c2 * bx
+        β = bx ./ c1
+        κ = c1 * (opt_kappas .- c2)
+    elseif constrain && cmode == CC_DEMOGRAPHY
+        c = sum(bx)
+        α = ax
+        β = bx ./ c
+        κ = c .* opt_kappas
+    else
+        α = ax
+        β = bx
+        κ = opt_kappas
+    end
+
+    return (alphas=α, betas=β, kappas=κ)
+end
+
+function lc_adjust!(model::MortalityModel2; constrain::Bool=true)
+    α = alphas(model)
+    β = betas(model)
+    κ = kappas(model)
+    t = years(model)
+    x = ages(model)
+    dxt = deaths(model)
+    Ext = exposures(model)
+    cm = calculation(model)
+    (α′, β′, κ′) = lc_adjust(α, β, κ, t, dxt, Ext; constrain=constrain, cmode=cm)
+    θ = ModelParameters(α′, β′, κ′, x, t)
+
+    model.parameters = θ
+    return model
+end
+
+function lm_adjust!(model::MortalityModel2; constrain::Bool=true)
+    α = alphas(model)
+    β = betas(model)
+    κ = kappas(model)
+    t = years(model)
+    x = ages(model)
+    mxt = rates(model)
+    ext = lifespans(model)
+    gender = sex(model)
+    cmode = calculation(model)
+    (α′, β′, κ′) = lm_adjust(α, β, κ, t, x, mxt, ext, gender; cmode=cmode, constrain=constrain)
+    θ = ModelParameters(α′, β′, κ′, x, t)
+    model.parameters = θ
+    return model
+end
+
+function bms_adjust!(model::MortalityModel2; constrain::Bool=true)
+    α = alphas(model)
+    β = betas(model)
+    κ = kappas(model)
+    t = years(model)
+    x = ages(model)
+    dxt = deaths(model)
+    Ext = exposures(model)
+    cm = calculation(model)
+    (α′, β′, κ′) = bms_adjust(α, β, κ, t, dxt, Ext; constrain=constrain, cmode=cm)
+    θ = ModelParameters(α′, β′, κ′, x, t)
+    model.parameters = θ
+    return model
+end
+
+function calculate_deviance_statistic(
+    deaths::Matrix{Float64},
+    exposures::Matrix{Float64},
+    alphas::Vector{Float64},
+    betas::Vector{Float64},
+    kappas::Vector{Float64}
+)
     X = size(deaths, 1)
     T = size(deaths, 2)
     mxt = exp.(reshape(alphas, X, 1) .+ reshape(betas, X, 1) * reshape(kappas, 1, T))
@@ -690,38 +471,39 @@ function calculate_deviance_statistic(deaths::Matrix{Float64}, exposures::Matrix
 
 end
 
-
-function choose_period!(model::MortalityModel)
-    all_years = model.ranges.all.years.values
-    fit_years = model.ranges.fit.years.values
-    test_years = model.ranges.test.years.values
+function choose_period!(model::MortalityModel2; constrain::Bool=true)
+    all_years = years(model, DS_COMPLETE)
+    train_years = years(model, DS_TRAIN)
+    test_years = years(model, DS_TEST)
 
     if length(all_years) != length(test_years) || !all(all_years .== test_years)
-        years = collect(all_years[begin]:(test_years[begin]-1))
+        yvals = collect(all_years[begin]:(test_years[begin]-1))
     else
-        years = model.ranges.fit.years.values
+        yvals = train_years
     end
 
-
-    m = years[end]
-    potential_starts = years[1:end-2]
+    yr = yearrange(yvals)
+    m = yvals[end]
+    m_idx = yr.indexer[m]
+    potential_starts = yvals[1:end-2]
+    ps_idx = collect(map(y -> yr.indexer[y], potential_starts))
     Sl = length(potential_starts)
 
-    cj = model.calculationmode == CM_JULIA
-    cd = model.calculationmode == CM_DEMOGRAPHY
+    cm = calculation(model)
 
     R_statistics = Matrix{Float64}(undef, Sl, 2)
 
-    for i in eachindex(potential_starts)
+    for i in eachindex(ps_idx)
         S = potential_starts[i]
-        lmxt = model.logrates.fit[:, S:m].values
-        dxt = model.deaths.fit[:, S:m].values
-        Ext = model.exposures.fit[:, S:m].values
-        (alpha, beta, kappa) = basefit!(lmxt; constrain_julia=cj, constrain_demography=cd)
+        S_idx = ps_idx[i]
+        lmxt = logrates(model)[:, S_idx:m_idx]
+        dxt = deaths(model)[:, S_idx:m_idx]
+        Ext = exposures(model)[:, S_idx:m_idx]
+        (α, β, κ) = basefit!(lmxt; constrain=constrain, cmode=cm)
 
-        (alpha, beta, kappa) = adjustkappa_bms!(dxt, Ext, alpha, beta, kappa; constrain_julia=false)
+        (α, β, κ) = bms_adjust(α, β, κ, collect(S:m), dxt, Ext; constrain=constrain, cmode=cm)
 
-        R_S = calculate_deviance_statistic(dxt, Ext, alpha, beta, kappa)
+        R_S = calculate_deviance_statistic(dxt, Ext, α, β, κ)
 
         R_statistics[i, :] = [S, R_S]
     end
@@ -730,21 +512,42 @@ function choose_period!(model::MortalityModel)
     start_year = Int(R_statistics[ordered_idx[1], 1])
     yr = yearrange(start_year:m)
 
-    fitrange!(model; years=yr)
+    fitrange!(model; yvals=yr)
 
 end
 
+function fit!(model::MortalityModel2; constrain::Bool=true, choose_period::Bool=false)
 
-function variation_explained(model::MortalityModel)
-    logrates = model.logrates.all.values
+    if choose_period
+        choose_period!(model)
+    end
+
+    basefit!(model, constrain=constrain)
+    cm = calculation(model)
+
+    if model.variant.adjustment == AC_DXT
+        bms_adjust!(model; constrain=constrain && cm == CC_JULIA)
+    elseif model.variant.adjustment == AC_E0
+        lm_adjust!(model; constrain=constrain && cm == CC_JULIA)
+    elseif model.variant.adjustment == AC_DT
+        lc_adjust!(model; constrain=constrain && cm == CC_JULIA)
+    end
+
+    return model
+
+end
+
+function variation_explained(model::MortalityModel2)
+    logrates = logrates(model)
     α = mapslices(mean, logrates, dims=2)
     centered = logrates .- α
 
     σ = svd(centered).S
+    σ² = σ .^ 2
 
-    ∑σ² = sum(σ .^ 2)
+    ∑σ² = sum(σ²)
 
-    pve = cumsum(σ .^ 2) ./ ∑σ²
+    pve = cumsum(σ²) ./ ∑σ²
 
     return pve
 end

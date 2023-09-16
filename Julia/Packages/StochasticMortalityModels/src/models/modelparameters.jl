@@ -168,10 +168,10 @@ function Base.show(io::IO, t::MIME"text/plain", mp::ModelParameters)
 end
 
 
-function constrain!(mp::ModelParameters; mode::CalculationMode=CM_JULIA)
-    if mode == CM_JULIA
+function constrain!(mp::ModelParameters; mode::CalculationChoice=CC_JULIA)
+    if mode == CC_JULIA
         return constrain_julia!(mp)
-    elseif mode == CM_DEMOGRAPHY
+    elseif mode == CC_DEMOGRAPHY
         return constrain_demography!(mp)
     else
         throw(ArgumentError("CalulcationMode `$mode` not understood"))
@@ -198,10 +198,15 @@ function constrain_julia!(mp::ModelParameters)
     return mp
 end
 
-function mxt_hat(mp::ModelParameters; ages::Union{AbstractVector{Int},Colon}=:, years::Union{AbstractVector{Int},Colon}=:, log_scale::Bool=false)::AgePeriodData{Float64}
-    alpha = mp.alphas[ages]
-    beta = mp.betas[ages]
-    kappa = mp.kappas[years]
+function mxt_hat(
+    mp::ModelParameters;
+    age_subset::Union{AbstractVector{Int},Colon}=:,
+    year_subset::Union{AbstractVector{Int},Colon}=:,
+    log_scale::Bool=false
+)::AgePeriodData{Float64}
+    alpha = mp.alphas[age_subset]
+    beta = mp.betas[age_subset]
+    kappa = mp.kappas[year_subset]
 
     lmxt = alpha + beta * kappa
 
