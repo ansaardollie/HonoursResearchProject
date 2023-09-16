@@ -13,7 +13,7 @@ export fitrange!,
 
 SecondaryRangeSelection = Union{Nothing,DataRange,AbstractVector{Int}}
 
-function fitrange!(model::MortalityModel2; yvals::SecondaryRangeSelection=nothing, avals::SecondaryRangeSelection=nothing)
+function fitrange!(model::MortalityModel; yvals::SecondaryRangeSelection=nothing, avals::SecondaryRangeSelection=nothing)
 
     if isnothing(yvals) && isnothing(avals)
         throw(ArgumentError("Must provide range to fit for"))
@@ -65,12 +65,12 @@ function fitrange!(model::MortalityModel2; yvals::SecondaryRangeSelection=nothin
 end
 
 
-function fitted_deaths(model::MortalityModel2)
+function fitted_deaths(model::MortalityModel)
     params = model.parameters
     return fitted_deaths(params, Exposures(model))
 end
 
-function basefit!(model::MortalityModel2; constrain::Bool=true)
+function basefit!(model::MortalityModel; constrain::Bool=true)
     ar = Ages(model)
     yr = Years(model)
     lr = logrates(model)
@@ -388,7 +388,7 @@ function bms_adjust(
     return (alphas=α, betas=β, kappas=κ)
 end
 
-function lc_adjust!(model::MortalityModel2; constrain::Bool=true)
+function lc_adjust!(model::MortalityModel; constrain::Bool=true)
     α = alphas(model)
     β = betas(model)
     κ = kappas(model)
@@ -404,7 +404,7 @@ function lc_adjust!(model::MortalityModel2; constrain::Bool=true)
     return model
 end
 
-function lm_adjust!(model::MortalityModel2; constrain::Bool=true)
+function lm_adjust!(model::MortalityModel; constrain::Bool=true)
     α = alphas(model)
     β = betas(model)
     κ = kappas(model)
@@ -420,7 +420,7 @@ function lm_adjust!(model::MortalityModel2; constrain::Bool=true)
     return model
 end
 
-function bms_adjust!(model::MortalityModel2; constrain::Bool=true)
+function bms_adjust!(model::MortalityModel; constrain::Bool=true)
     α = alphas(model)
     β = betas(model)
     κ = kappas(model)
@@ -471,7 +471,7 @@ function calculate_deviance_statistic(
 
 end
 
-function choose_period!(model::MortalityModel2; constrain::Bool=true)
+function choose_period!(model::MortalityModel; constrain::Bool=true)
     all_years = years(model, DS_COMPLETE)
     train_years = years(model, DS_TRAIN)
     test_years = years(model, DS_TEST)
@@ -516,7 +516,7 @@ function choose_period!(model::MortalityModel2; constrain::Bool=true)
 
 end
 
-function fit!(model::MortalityModel2; constrain::Bool=true, choose_period::Bool=false)
+function fit!(model::MortalityModel; constrain::Bool=true, choose_period::Bool=false)
 
     if choose_period
         choose_period!(model)
@@ -537,7 +537,7 @@ function fit!(model::MortalityModel2; constrain::Bool=true, choose_period::Bool=
 
 end
 
-function variation_explained(model::MortalityModel2)
+function variation_explained(model::MortalityModel)
     logrates = logrates(model)
     α = mapslices(mean, logrates, dims=2)
     centered = logrates .- α

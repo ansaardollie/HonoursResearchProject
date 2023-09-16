@@ -1,7 +1,7 @@
 
 export maswe
 
-function maswe(model::MortalityModel2, forecasts::ModelForecasts; max_lookahead::Int=20, variable::ForecastVariable=FV_LOGRATE)
+function maswe(model::MortalityModel, forecasts::ModelForecasts; max_lookahead::Int=20, variable::ForecastVariable=FV_LOGRATE)
 
     exposure_weights = weights(vec(mean(exposures(model, DS_TRAIN), dims=2)))
 

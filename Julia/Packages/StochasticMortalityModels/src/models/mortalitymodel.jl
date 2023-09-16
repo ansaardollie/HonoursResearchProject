@@ -1,4 +1,4 @@
-export MortalityModel2,
+export MortalityModel,
     sex,
     location,
     calculation,
@@ -25,7 +25,7 @@ export MortalityModel2,
     kappas,
     Kappas
 
-mutable struct MortalityModel2
+mutable struct MortalityModel
     population::PopulationInfo
     ranges::Stratified{AgeYearRange}
     dataframes::Stratified{DataFrame}
@@ -34,7 +34,7 @@ mutable struct MortalityModel2
     parameters::ModelParameters
 end
 
-function MortalityModel2(;
+function MortalityModel(;
     population::PopulationInfo,
     ranges::Stratified{AgeYearRange},
     data::DataFrame,
@@ -80,7 +80,7 @@ function MortalityModel2(;
 
     mp = ModelParameters(ranges.train)
 
-    return MortalityModel2(
+    return MortalityModel(
         population,
         ranges,
         strat_df, strat_md, variant,
@@ -90,7 +90,7 @@ function MortalityModel2(;
 end
 
 
-function MortalityModel2(
+function MortalityModel(
     country::AbstractString,
     sex::Sex;
     remove_missing::Bool=true,
@@ -170,7 +170,7 @@ function MortalityModel2(
     df = DataFrames.subset(df, :Year => ByRow(y -> y in all_years))
 
     @reset variant.calculation = calculation_mode
-    return MortalityModel2(;
+    return MortalityModel(;
         population=popinfo,
         ranges=modeldims,
         data=df,
@@ -180,7 +180,7 @@ function MortalityModel2(
 end
 
 
-function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel2)
+function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
 
     ds = displaysize(io)
     width = ds[2]
@@ -226,39 +226,39 @@ function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel2)
 end
 
 
-sex(m::MortalityModel2)::Sex = m.population.sex
-location(m::MortalityModel2)::String = m.population.location
-calculation(m::MortalityModel2)::CalculationChoice = m.variant.calculation
-adjustment(m::MortalityModel2)::AdjustmentChoice = m.variant.adjustment
-jumpoff(m::MortalityModel2)::JumpoffChoice = m.variant.jumpoff
-ages(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Vector{Int} = stratamatch(strata, m.data.complete.ages, m.data.train.ages, m.data.test.ages)
-Ages(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::DataRange = stratamatch(strata, m.ranges.complete.ages, m.ranges.train.ages, m.ranges.test.ages)
-years(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Vector{Int} = stratamatch(strata, m.data.complete.years, m.data.train.years, m.data.test.years)
-Years(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::DataRange = stratamatch(strata, m.ranges.complete.years, m.ranges.train.years, m.ranges.test.years)
-rates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.rates, m.data.train.rates, m.data.test.rates)
+sex(m::MortalityModel)::Sex = m.population.sex
+location(m::MortalityModel)::String = m.population.location
+calculation(m::MortalityModel)::CalculationChoice = m.variant.calculation
+adjustment(m::MortalityModel)::AdjustmentChoice = m.variant.adjustment
+jumpoff(m::MortalityModel)::JumpoffChoice = m.variant.jumpoff
+ages(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Vector{Int} = stratamatch(strata, m.data.complete.ages, m.data.train.ages, m.data.test.ages)
+Ages(m::MortalityModel, strata::DataStrata=DS_TRAIN)::DataRange = stratamatch(strata, m.ranges.complete.ages, m.ranges.train.ages, m.ranges.test.ages)
+years(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Vector{Int} = stratamatch(strata, m.data.complete.years, m.data.train.years, m.data.test.years)
+Years(m::MortalityModel, strata::DataStrata=DS_TRAIN)::DataRange = stratamatch(strata, m.ranges.complete.years, m.ranges.train.years, m.ranges.test.years)
+rates(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.rates, m.data.train.rates, m.data.test.rates)
 
-logrates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.logrates, m.data.train.logrates, m.data.test.logrates)
+logrates(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.logrates, m.data.train.logrates, m.data.test.logrates)
 
-exposures(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.exposures, m.data.train.exposures, m.data.test.exposures)
+exposures(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.exposures, m.data.train.exposures, m.data.test.exposures)
 
-deaths(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.deaths, m.data.train.deaths, m.data.test.deaths)
+deaths(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.deaths, m.data.train.deaths, m.data.test.deaths)
 
-lifespans(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.lifespans, m.data.train.lifespans, m.data.test.lifespans)
+lifespans(m::MortalityModel, strata::DataStrata=DS_TRAIN)::Matrix{Float64} = stratamatch(strata, m.data.complete.lifespans, m.data.train.lifespans, m.data.test.lifespans)
 
-Rates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Rates(m.data.complete), Rates(m.data.train), Rates(m.data.test))
+Rates(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Rates(m.data.complete), Rates(m.data.train), Rates(m.data.test))
 
-LogRates(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, LogRates(m.data.complete), LogRates(m.data.train), LogRates(m.data.test))
+LogRates(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, LogRates(m.data.complete), LogRates(m.data.train), LogRates(m.data.test))
 
-Exposures(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Exposures(m.data.complete), Exposures(m.data.train), Exposures(m.data.test))
+Exposures(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Exposures(m.data.complete), Exposures(m.data.train), Exposures(m.data.test))
 
-Deaths(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Deaths(m.data.complete), Deaths(m.data.train), Deaths(m.data.test))
+Deaths(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Deaths(m.data.complete), Deaths(m.data.train), Deaths(m.data.test))
 
-Lifespans(m::MortalityModel2, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Lifespans(m.data.complete), Lifespans(m.data.train), Lifespans(m.data.test))
+Lifespans(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Lifespans(m.data.complete), Lifespans(m.data.train), Lifespans(m.data.test))
 
-alphas(m::MortalityModel2)::Vector{Float64} = m.parameters.alphas.values
-Alphas(m::MortalityModel2)::ParameterSet{Float64} = m.parameters.alphas
-betas(m::MortalityModel2)::Vector{Float64} = m.parameters.betas.values
-Betas(m::MortalityModel2)::ParameterSet{Float64} = m.parameters.betas
-kappas(m::MortalityModel2)::Vector{Float64} = m.parameters.kappas.values
-Kappas(m::MortalityModel2)::ParameterSet{Float64} = m.parameters.kappas
+alphas(m::MortalityModel)::Vector{Float64} = m.parameters.alphas.values
+Alphas(m::MortalityModel)::ParameterSet{Float64} = m.parameters.alphas
+betas(m::MortalityModel)::Vector{Float64} = m.parameters.betas.values
+Betas(m::MortalityModel)::ParameterSet{Float64} = m.parameters.betas
+kappas(m::MortalityModel)::Vector{Float64} = m.parameters.kappas.values
+Kappas(m::MortalityModel)::ParameterSet{Float64} = m.parameters.kappas
 

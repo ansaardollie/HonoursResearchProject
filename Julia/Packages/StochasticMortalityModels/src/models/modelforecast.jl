@@ -36,7 +36,7 @@ end
 
 
 function forecast(
-    model::MortalityModel2;
+    model::MortalityModel;
     confidence_level::Float64=0.95,
     uncertainty::UncertaintyMode=UM_INNOVATION_ONLY
 )
