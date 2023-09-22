@@ -1,4 +1,4 @@
-export table_config, gen_seperator
+export table_config, gen_seperator, latex_table_config
 
 ft_identity = (v, i, j) -> v
 
@@ -102,6 +102,80 @@ function table_config(io::IO;
 
     if !isnothing(hlines)
         conf = (conf..., hlines=hlines)
+    end
+
+
+
+    return conf
+end
+
+function latex_table_config(io::IO;
+    headers,
+    title=nothing,
+    label=nothing,
+    rows=nothing,
+    row_label_title=nothing,
+    type=:longtable,
+    alignment=:r,
+    lt_footer=nothing,
+    backend=Val(:latex),
+    formatters=ft_identity,
+    highlighters=nothing,
+    header_alignment=:c,
+    row_label_alignment=:c,
+    show_header=true,
+    show_row_number=false,
+    show_subheader=true,
+    title_alignment=:l,
+    hlines=:all,
+    vlines=:all,
+    table_format=tf_latex_double
+)
+
+
+
+    isfile = get(io, :file, false)::Bool
+
+
+    conf = (
+        title_alignment=title_alignment,
+        backend=backend,
+        formatters=formatters,
+        alignment=alignment,
+        header=headers,
+        show_subheader=show_subheader,
+        header_alignment=header_alignment,
+        row_label_alignment=row_label_alignment,
+        show_header=show_header,
+        show_row_number=show_row_number,
+        longtable_footer=lt_footer,
+        table_type=type,
+        tf=table_format)
+    if !isnothing(title)
+        conf = (conf..., title=title)
+    end
+
+    if !isnothing(label)
+        conf = (conf..., label=label)
+    end
+    if !isnothing(rows)
+        conf = (conf..., row_labels=rows)
+    end
+
+    if !isnothing(row_label_title)
+        conf = (conf..., row_label_column_title=row_label_title)
+    end
+
+    if !isnothing(hlines)
+        conf = (conf..., hlines=hlines)
+    end
+
+    if !isnothing(highlighters)
+        conf = (conf..., highlighters=highlighters)
+    end
+
+    if !isnothing(vlines)
+        conf = (conf..., vlines=vlines)
     end
 
 

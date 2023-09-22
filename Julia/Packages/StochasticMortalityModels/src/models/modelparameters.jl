@@ -226,9 +226,9 @@ function mxt_hat(
     end
 end
 
-function fitted_deaths(mp::ModelParameters, exposures::AgePeriodData{Float64}; ages::Union{AbstractVector{Int},Colon}=:, years::Union{AbstractVector{Int},Colon}=:)
-    mxt = mxt_hat(mp; ages=ages, years=years)
-    Ext = exposures[ages, years]
+function fitted_deaths(mp::ModelParameters, exposures::AgePeriodData{Float64}; age_subset::Union{AbstractVector{Int},Colon}=:, year_subset::Union{AbstractVector{Int},Colon}=:)
+    mxt = mxt_hat(mp; age_subset=age_subset, year_subset=year_subset)
+    Ext = exposures[age_subset, year_subset]
 
     dxt::AgePeriodData{Float64} = mxt * Ext
 

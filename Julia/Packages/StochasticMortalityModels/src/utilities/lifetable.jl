@@ -69,22 +69,22 @@ end
 
 function lexpectancies(
     mxt::Matrix{Float64},
-    ages,
-    years;
-    sex,
+    xages,
+    tyears;
+    gender,
     at_age=[0],
     mode::CalculationChoice=CC_JULIA,
     radix=1_000_000,
     debug=false
 )
 
-    output = Matrix{Float64}(undef, length(at_age), length(years))
+    output = Matrix{Float64}(undef, length(at_age), length(tyears))
 
-    for i in eachindex(years)
-        year = years[i]
+    for i in eachindex(tyears)
+        year = tyears[i]
         mx = mxt[:, i]
 
-        les = expected_lifetime(mx, ages; sex=sex, mode=mode, at_age=at_age, radix=radix, debug=debug)
+        les = expected_lifetime(mx, xages; sex=gender, mode=mode, at_age=at_age, radix=radix, debug=debug)
         output[:, i] = les
     end
 

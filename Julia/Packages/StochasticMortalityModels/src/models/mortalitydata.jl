@@ -1,4 +1,4 @@
-
+export MortalityData
 struct MortalityData
     source::MortalityDataSource
     ages::Vector{Int}
@@ -20,4 +20,4 @@ Rates(md)::AgePeriodData{Float64} = AgePeriodData(MDC_RATES, md.rates, Ages(md),
 LogRates(md)::AgePeriodData{Float64} = AgePeriodData(MDC_LOGRATES, md.logrates, Ages(md), Years(md); source=md.source)
 Exposures(md)::AgePeriodData{Float64} = AgePeriodData(MDC_EXPOSURES, md.exposures, Ages(md), Years(md); source=md.source)
 Deaths(md)::AgePeriodData{Float64} = AgePeriodData(MDC_DEATHS, md.deaths, Ages(md), Years(md); source=md.source)
-Lifespans(md)::AgePeriodData{Float64} = AgePeriodData(MDC_LIFETIMES, md.lifetimes, Ages(md), Years(md); source=md.source)
+Lifespans(md)::AgePeriodData{Float64} = AgePeriodData(MDC_LIFESPANS, md.lifespans, Ages(md), Years(md); source=md.source)

@@ -9,7 +9,11 @@ export fitrange!,
     lm_adjust,
     lm_adjust!,
     bms_adjust,
-    bms_adjust!
+    bms_adjust!,
+    variation_explained,
+    gen_kopt_bms,
+    gen_kopt_lc,
+    gen_kopt_lm
 
 SecondaryRangeSelection = Union{Nothing,DataRange,AbstractVector{Int}}
 
@@ -44,6 +48,9 @@ function fitrange!(model::MortalityModel; yvals::SecondaryRangeSelection=nothing
     @reset train.logrates = logrates(model, DS_COMPLETE)[aidx, yidx]
     @reset train.lifespans = lifespans(model, DS_COMPLETE)[aidx, yidx]
 
+    @reset train.ages = ar.values
+    @reset train.years = yr.values
+
     model.data = Stratified{MortalityData}(
         model.data.complete,
         train,
@@ -65,8 +72,8 @@ function fitrange!(model::MortalityModel; yvals::SecondaryRangeSelection=nothing
 end
 
 
-function fitted_deaths(model::MortalityModel)
-    params = model.parameters
+function fitted_deaths(model::MortalityModel, version::ParameterVersion=PV_ADJUSTED)
+    params = version == PV_ADJUSTED ? model.parameters : model.unadjusted_parameters
     return fitted_deaths(params, Exposures(model))
 end
 
@@ -74,7 +81,7 @@ function basefit!(model::MortalityModel; constrain::Bool=true)
     ar = Ages(model)
     yr = Years(model)
     lr = logrates(model)
-    α = mapslices(mean, lr, dims=2)
+    α = mapslices(lmt -> mean(lmt[.!isinf.(lmt)]), lr, dims=2)
     alpha = ParameterSet("α(x)", vec(α), ar)
     Zxt = lr .- α
 
@@ -86,15 +93,18 @@ function basefit!(model::MortalityModel; constrain::Bool=true)
     kappa = ParameterSet("κ(t)", vec(κ), yr)
 
     mp = ModelParameters(alpha, beta, kappa)
+    ump = ModelParameters(alpha, beta, kappa)
     if constrain
         constrain!(mp; mode=calculation(model))
+        constrain!(ump; mode=calculation(model))
     end
 
     model.parameters = mp
+    model.unadjusted_parameters = ump
 end
 
 function basefit!(logrates::Matrix{Float64}; constrain::Bool=true, cmode::CalculationChoice=CC_JULIA)
-    α = vec(mapslices(mean, logrates, dims=2))
+    α = vec(mapslices(lmt -> mean(lmt[.!isinf.(lmt)]), logrates, dims=2))
 
     Zxt = logrates .- α
 
@@ -188,7 +198,7 @@ function gen_kopt_lm(
         end
 
 
-        solve_result = nlsolve(solve_func!, [info.init], autodiff=:forward, method=:newton)
+        solve_result = nlsolve(solve_func!, [info.init], autodiff=:forward)
 
         return solve_result.zero[1]
     end
@@ -501,7 +511,7 @@ function choose_period!(model::MortalityModel; constrain::Bool=true)
         Ext = exposures(model)[:, S_idx:m_idx]
         (α, β, κ) = basefit!(lmxt; constrain=constrain, cmode=cm)
 
-        (α, β, κ) = bms_adjust(α, β, κ, collect(S:m), dxt, Ext; constrain=constrain, cmode=cm)
+        (α, β, κ) = bms_adjust(α, β, κ, collect(S:m), dxt, Ext; constrain=constrain && cm == CC_JULIA, cmode=cm)
 
         R_S = calculate_deviance_statistic(dxt, Ext, α, β, κ)
 
@@ -514,6 +524,8 @@ function choose_period!(model::MortalityModel; constrain::Bool=true)
 
     fitrange!(model; yvals=yr)
 
+    return R_statistics
+
 end
 
 function fit!(model::MortalityModel; constrain::Bool=true, choose_period::Bool=false)
@@ -525,12 +537,16 @@ function fit!(model::MortalityModel; constrain::Bool=true, choose_period::Bool=f
     basefit!(model, constrain=constrain)
     cm = calculation(model)
 
+
     if model.variant.adjustment == AC_DXT
         bms_adjust!(model; constrain=constrain && cm == CC_JULIA)
+        # bms_adjust!(model; constrain=constrain)
     elseif model.variant.adjustment == AC_E0
         lm_adjust!(model; constrain=constrain && cm == CC_JULIA)
+        # lm_adjust!(model; constrain=constrain)
     elseif model.variant.adjustment == AC_DT
         lc_adjust!(model; constrain=constrain && cm == CC_JULIA)
+        # lc_adjust!(model; constrain=constrain)
     end
 
     return model
@@ -538,9 +554,9 @@ function fit!(model::MortalityModel; constrain::Bool=true, choose_period::Bool=f
 end
 
 function variation_explained(model::MortalityModel)
-    logrates = logrates(model)
-    α = mapslices(mean, logrates, dims=2)
-    centered = logrates .- α
+    lmxt = logrates(model)
+    α = mapslices(lmt -> mean(lmt[.!isinf.(lmt)]), lmxt, dims=2)
+    centered = lmxt .- α
 
     σ = svd(centered).S
     σ² = σ .^ 2

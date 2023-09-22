@@ -32,6 +32,7 @@ mutable struct MortalityModel
     data::Stratified{MortalityData}
     variant::ModelImplementation
     parameters::ModelParameters
+    unadjusted_parameters::ModelParameters
 end
 
 function MortalityModel(;
@@ -47,7 +48,7 @@ function MortalityModel(;
 
     strat_df = Stratified{DataFrame}(all_data, fit_data, test_data, "Raw Data Frames")
 
-    df_columns = [:Rates, :LogRates, :Exposures, :Deaths, :Lifespans]
+    df_columns = [:Rates, :Exposures, :Deaths, :Lifespans]
 
     ds = Dict{Symbol,MortalityData}()
 
@@ -63,7 +64,8 @@ function MortalityModel(;
             data_dict[c] = vals
         end
         rates = data_dict[:Rates]
-        logrates = data_dict[:LogRates]
+        rates = fix_zero_rates!(rates)
+        logrates = log.(rates)
         exposures = data_dict[:Exposures]
         deaths = data_dict[:Deaths]
         lifespans = data_dict[:Lifespans]
@@ -80,11 +82,14 @@ function MortalityModel(;
 
     mp = ModelParameters(ranges.train)
 
+    ump = ModelParameters(ranges.train)
+
     return MortalityModel(
         population,
         ranges,
         strat_df, strat_md, variant,
-        mp
+        mp,
+        ump
     )
 
 end
@@ -94,15 +99,18 @@ function MortalityModel(
     country::AbstractString,
     sex::Sex;
     remove_missing::Bool=true,
-    fityears::Optional{AbstractVector{Int}}=nothing,
-    fitages::Optional{AbstractVector{Int}}=nothing,
-    testyears::Optional{AbstractVector{Int}}=nothing,
-    testages::Optional{AbstractVector{Int}}=nothing,
+    train_years::Optional{AbstractVector{Int}}=nothing,
+    train_ages::Optional{AbstractVector{Int}}=nothing,
+    test_years::Optional{AbstractVector{Int}}=nothing,
+    test_ages::Optional{AbstractVector{Int}}=nothing,
     calculation_mode::CalculationChoice=CC_JULIA,
     variant::ModelImplementation=lc_j
 )
     cd = pwd()
     dir = "$cd/Raw Mortality Data/$country"
+    if !isdir(dir)
+        dir = "https://raw.githubusercontent.com/ansaardollie/Raw-Mortality-Data/main/$country"
+    end
     exposure_df = readfile("$dir/exposures.txt"; remove_missing=remove_missing)
     deaths_df = readfile("$dir/deaths.txt"; remove_missing=remove_missing)
 
@@ -117,6 +125,8 @@ function MortalityModel(
     exposures = sexmatch(sex, exposure_df.Total, exposure_df.Female, exposure_df.Male)
     true_deaths = sexmatch(sex, deaths_df.Total, deaths_df.Female, deaths_df.Male)
     rates = lifetable_df.mx
+
+
     logrates = log.(rates)
     approx_deaths = exposures .* rates
     les = lifetable_df.ex
@@ -131,8 +141,8 @@ function MortalityModel(
         :Lifespans => les
     )
 
-    fitfor = (years=fityears, ages=fitages)
-    testfor = (years=testyears, ages=testages)
+    fitfor = (years=train_years, ages=train_ages)
+    testfor = (years=test_years, ages=test_ages)
 
     potential_years = sort(unique(df.Year))
     sy = potential_years[begin]
@@ -178,6 +188,7 @@ function MortalityModel(
     )
 
 end
+
 
 
 function Base.show(io::IO, t::MIME"text/plain", model::MortalityModel)
@@ -255,10 +266,10 @@ Deaths(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} =
 
 Lifespans(m::MortalityModel, strata::DataStrata=DS_TRAIN)::AgePeriodData{Float64} = stratamatch(strata, Lifespans(m.data.complete), Lifespans(m.data.train), Lifespans(m.data.test))
 
-alphas(m::MortalityModel)::Vector{Float64} = m.parameters.alphas.values
-Alphas(m::MortalityModel)::ParameterSet{Float64} = m.parameters.alphas
-betas(m::MortalityModel)::Vector{Float64} = m.parameters.betas.values
-Betas(m::MortalityModel)::ParameterSet{Float64} = m.parameters.betas
-kappas(m::MortalityModel)::Vector{Float64} = m.parameters.kappas.values
-Kappas(m::MortalityModel)::ParameterSet{Float64} = m.parameters.kappas
+alphas(m::MortalityModel, version::ParameterVersion=PV_ADJUSTED)::Vector{Float64} = version == PV_ADJUSTED ? m.parameters.alphas.values : m.unadjusted_parameters.alphas.values
+Alphas(m::MortalityModel, version::ParameterVersion=PV_ADJUSTED)::ParameterSet{Float64} = version == PV_ADJUSTED ? m.parameters.alphas : m.unadjusted_parameters.alphas
+betas(m::MortalityModel, version::ParameterVersion=PV_ADJUSTED)::Vector{Float64} = version == PV_ADJUSTED ? m.parameters.betas.values : m.unadjusted_parameters.betas.values
+Betas(m::MortalityModel, version::ParameterVersion=PV_ADJUSTED)::ParameterSet{Float64} = version == PV_ADJUSTED ? m.parameters.betas : m.unadjusted_parameters.betas
+kappas(m::MortalityModel, version::ParameterVersion=PV_ADJUSTED)::Vector{Float64} = version == PV_ADJUSTED ? m.parameters.kappas.values : m.unadjusted_parameters.kappas.values
+Kappas(m::MortalityModel, version::ParameterVersion=PV_ADJUSTED)::ParameterSet{Float64} = version == PV_ADJUSTED ? m.parameters.kappas : m.unadjusted_parameters.kappas
 

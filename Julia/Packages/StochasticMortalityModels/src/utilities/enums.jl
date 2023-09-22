@@ -10,9 +10,10 @@ export a0_config
 export UncertaintyMode, UM_INNOVATION_ONLY, UM_INNOVDRIFT
 export AdjustmentChoice, AC_NONE, AC_DT, AC_E0, AC_DXT
 export JumpoffChoice, JR_FITTED, JR_ACTUAL
-export ForecastVariable, FV_RATE, FV_LOGRATE, FV_LE, FV_DEATHS
+export ForecastVariable, FV_RATE, FV_LOGRATE, FV_MRL, FV_DEATHS, FV_LEAB
 export DataStrata, DS_COMPLETE, DS_TRAIN, DS_TEST, stratamatch
 export ForecastLevel, FL_CENTER, FL_LOWER, FL_UPPER
+export ParameterVersion, PV_ADJUSTED, PV_UNADJUSTED
 
 
 @enum Sex begin
@@ -77,8 +78,9 @@ end
 @enum ForecastVariable begin
     FV_LOGRATE = 1
     FV_RATE = 2
-    FV_LE = 3
+    FV_MRL = 3
     FV_DEATHS = 4
+    FV_LEAB = 5
 end
 
 @enum ForecastLevel begin
@@ -91,6 +93,11 @@ end
     DS_COMPLETE = 1
     DS_TRAIN = 2
     DS_TEST = 3
+end
+
+@enum ParameterVersion begin
+    PV_ADJUSTED = 1
+    PV_UNADJUSTED = 2
 end
 
 

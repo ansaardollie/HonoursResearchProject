@@ -122,9 +122,9 @@ function forecast(
     @reset mxt_fub.label = "Forecasted $(round(confidence_level*100,digits=0))% LB $rl"
 
     cm = calculation(model)
-    le_fc_dm = lexpectancies(mxt_fc.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=cm)
-    le_flb_dm = lexpectancies(mxt_fub.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=cm)
-    le_fub_dm = lexpectancies(mxt_flb.values, ages, horizon, sex=model.population.sex, at_age=ages, mode=cm)
+    le_fc_dm = lexpectancies(mxt_fc.values, ages, horizon, gender=model.population.sex, at_age=ages, mode=cm)
+    le_flb_dm = lexpectancies(mxt_fub.values, ages, horizon, gender=model.population.sex, at_age=ages, mode=cm)
+    le_fub_dm = lexpectancies(mxt_flb.values, ages, horizon, gender=model.population.sex, at_age=ages, mode=cm)
 
     ext = exposures(model, DS_TEST)
     dxt_fc_dm = ext .* mxt_fc.values

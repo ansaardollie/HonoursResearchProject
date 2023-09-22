@@ -4,7 +4,14 @@ function readfile(
     path::AbstractString;
     remove_missing::Bool=true
 )::DataFrame
-    data, headers = DelimitedFiles.readdlm(path; header=true, skipstart=2)
+
+    if startswith(path, "https")
+        println("Downloading file at url `", path, "`")
+        data, headers = DelimitedFiles.readdlm(download(path); header=true, skipstart=2)
+    else
+        data, headers = DelimitedFiles.readdlm(path; header=true, skipstart=2)
+    end
+
     data_dict::Dict{String,Any} = Dict()
 
     data[:, 2] = ([typeof(age) <: Number ? age : occursin("-", age) ? parse(Float64, split(age, "-")[1]) : age for age in data[:, 2]])
